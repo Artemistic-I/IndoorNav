@@ -3,12 +3,78 @@
   <head>
     <title><%= title %></title>
     <link rel='stylesheet' href='/stylesheets/style.css' />
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script
+            src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFRCi9RiQ6jNMjspjXa6wVSVH7rbBnIGc&callback=initMap&v=weekly"
+            defer
+    ></script>
+    <script>
+      let poly;
+      let map;
+      let floorplanOverlay;
+
+      async function initMap() {
+        const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+        map = new google.maps.Map(document.getElementById("map"), {
+          zoom: 19,
+          center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
+        });
+        const imageBounds = {
+          north: 53.3818981375074,
+          south: 53.38133970460098,
+          east: -1.48135180383467,
+          west: -1.4828341389139235,
+        };
+
+        floorplanOverlay = new google.maps.GroundOverlay(
+                "https://www.sheffield.ac.uk/sites/default/files/styles/two_thirds_2x/public/2020-01/Diamond%20Fourth%20Floor.jpg?h=ce4ee067&itok=7296wBMS",
+                imageBounds,
+        );
+        floorplanOverlay.setMap(map);
+
+        //adding polylines
+        poly = new google.maps.Polyline({
+          strokeColor: "#FF0000",
+          strokeOpacity: 1.0,
+          strokeWeight: 3,
+          editable: true,
+          draggable: true,
+        });
+        poly.setMap(map);
+        // Add a listener for the click event
+        map.addListener("click", addLatLng);
+      }
+      // Handles click events on a map, and adds a new point to the Polyline.
+      function addLatLng(event) {
+        const path = poly.getPath();
+
+        // Because path is an MVCArray, we can simply append a new coordinate
+        // and it will automatically appear.
+        path.push(event.latLng);
+        // Add a new marker at the new plotted point on the polyline.
+        new AdvancedMarkerElement({
+          map,
+          position: event.latLng,
+        });
+      }
+
+      window.initMap = initMap;
+    </script>
+    <style>
+      #map {
+        height: 100%;
+      }
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+    </style>
   </head>
   <body>
-    <iframe
-            id="map-viewer-iframe"
-            style="width:100%; height:1000px"
-            src="https://map-viewer.situm.com?apikey=17be9c4f79a1b20206219be35be2c4e86c5ce1468d9055717353e487fab5b649&domain=">
-    </iframe>
+  <div id="map"></div>
+  <script>(g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.${c}apis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})
+    ({key: "AIzaSyCFRCi9RiQ6jNMjspjXa6wVSVH7rbBnIGc", v: "weekly"});</script>
   </body>
 </html>

@@ -44,7 +44,14 @@
           addLatLng(event);
           highlightVertex(event);
         });
+        // Create the DIV to hold the custom button.
+        const addBranchBtnDiv = document.createElement("div");
+        // Create the button.
+        const addBranchBtn = createBranchBtn(map);
 
+        // Append the button to the DIV.
+        addBranchBtnDiv.appendChild(addBranchBtn);
+        map.controls[google.maps.ControlPosition.TOP_CENTER].push(addBranchBtnDiv);
       }
       function startNewPolyline() {
         currentPolyline = new google.maps.Polyline({
@@ -189,7 +196,6 @@
           const path = polyline.getPath();
           for (let i = 0; i < path.getLength(); i++) {
             const point = path.getAt(i);
-            console.log(google.maps.geometry.spherical.computeDistanceBetween(point, newPoint));
             if (google.maps.geometry.spherical.computeDistanceBetween(point, newPoint) <= toleranceRadius) {
               return point;
             }
@@ -227,6 +233,31 @@
           //icons[0].offset = (highlightedVertexIndex / path.getLength() * 100) + '%';
           currentPolyline.set('icons', icons);
         }
+      }
+      function createBranchBtn(map) {
+        const controlButton = document.createElement("button");
+
+        // Set CSS for the control.
+        controlButton.style.backgroundColor = "#15ed6f";
+        controlButton.style.border = "2px solid #fff";
+        controlButton.style.borderRadius = "3px";
+        controlButton.style.boxShadow = "0 2px 6px rgba(0,0,0,.3)";
+        controlButton.style.color = "rgb(25,25,25)";
+        controlButton.style.cursor = "pointer";
+        controlButton.style.fontFamily = "Roboto,Arial,sans-serif";
+        controlButton.style.fontSize = "16px";
+        controlButton.style.lineHeight = "38px";
+        controlButton.style.margin = "8px 0 22px";
+        controlButton.style.padding = "0 5px";
+        controlButton.style.textAlign = "center";
+        controlButton.textContent = "New branch";
+        controlButton.title = "Click to start a new branch";
+        controlButton.type = "button";
+        // Setup the click event listeners: simply set the map to Chicago.
+        controlButton.addEventListener("click", () => {
+          completeCurrentPolyline();
+        });
+        return controlButton;
       }
 
       function completeCurrentPolyline() {

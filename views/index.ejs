@@ -16,11 +16,13 @@
       let polylines = [];
       let currentPolyline;
       const toleranceRadius = 3;
+      let highlightedVertexIndex = null;
 
       async function initMap() {
         map = new google.maps.Map(document.getElementById("map"), {
-          zoom: 19,
+          zoom: 20,
           center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
+          disableDefaultUI: true,
         });
         const imageBounds = {
           north: 53.3818981375074,
@@ -35,22 +37,12 @@
         );
         floorplanOverlay.setMap(map);
 
-        //adding polylines
-        // poly = new google.maps.Polyline({
-        //   strokeColor: "#FF0000",
-        //   strokeOpacity: 1.0,
-        //   strokeWeight: 3,
-        //   editable: true,
-        //   draggable: true,
-        // });
-        // poly.setMap(map);
-        // // Add a listener for the click event
-        // floorplanOverlay.addListener("click", addLatLng);
         floorplanOverlay.addListener("click", (event) => {
           if (!currentPolyline) {
             startNewPolyline();
           }
           addLatLng(event);
+          highlightVertex(event);
         });
 
       }
@@ -61,6 +53,7 @@
           strokeWeight: 3,
           editable: true,
           draggable: true,
+          icons: []
         });
         currentPolyline.setMap(map);
         polylines.push(currentPolyline);
@@ -204,11 +197,41 @@
         }
         return null;
       }
+      function highlightVertex(event) {
+        const path = currentPolyline.getPath();
+        for (let i = 0; i < path.getLength(); i++) {
+          if (path.getAt(i).equals(event.latLng)) {
+            highlightedVertexIndex = i;
+            break;
+          }
+        }
+        updateIcons(path);
+      }
+
+      function updateIcons(path) {
+        if (highlightedVertexIndex !== null) {
+          let icons = currentPolyline.get('icons');
+          if (!icons || icons.length === 0) {
+            icons = [{
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 7,
+                fillColor: '#00FF00',
+                fillOpacity: 1,
+                strokeWeight: 2,
+                strokeColor: '#00FF00'
+              },
+              offset: '100%'
+            }];
+          }
+          //icons[0].offset = (highlightedVertexIndex / path.getLength() * 100) + '%';
+          currentPolyline.set('icons', icons);
+        }
+      }
 
       function completeCurrentPolyline() {
         currentPolyline = null;
       }
-
 
       window.initMap = initMap;
     </script>

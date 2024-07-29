@@ -10,12 +10,14 @@
             defer
     ></script>
     <script>
-      let poly;
+      //let poly;
       let map;
       let floorplanOverlay;
+      let polylines = [];
+      let currentPolyline;
+      const toleranceRadius = 3;
 
       async function initMap() {
-        const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
         map = new google.maps.Map(document.getElementById("map"), {
           zoom: 19,
           center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
@@ -34,30 +36,85 @@
         floorplanOverlay.setMap(map);
 
         //adding polylines
-        poly = new google.maps.Polyline({
+        // poly = new google.maps.Polyline({
+        //   strokeColor: "#FF0000",
+        //   strokeOpacity: 1.0,
+        //   strokeWeight: 3,
+        //   editable: true,
+        //   draggable: true,
+        // });
+        // poly.setMap(map);
+        // // Add a listener for the click event
+        // floorplanOverlay.addListener("click", addLatLng);
+        floorplanOverlay.addListener("click", (event) => {
+          if (!currentPolyline) {
+            startNewPolyline();
+          }
+          addLatLng(event);
+        });
+        
+      }
+      function startNewPolyline() {
+        currentPolyline = new google.maps.Polyline({
           strokeColor: "#FF0000",
           strokeOpacity: 1.0,
           strokeWeight: 3,
           editable: true,
           draggable: true,
         });
-        poly.setMap(map);
-        // Add a listener for the click event
-        map.addListener("click", addLatLng);
-      }
-      // Handles click events on a map, and adds a new point to the Polyline.
-      function addLatLng(event) {
-        const path = poly.getPath();
+        currentPolyline.setMap(map);
+        polylines.push(currentPolyline);
 
-        // Because path is an MVCArray, we can simply append a new coordinate
-        // and it will automatically appear.
-        path.push(event.latLng);
-        // Add a new marker at the new plotted point on the polyline.
-        new AdvancedMarkerElement({
-          map,
-          position: event.latLng,
-        });
+        const path = currentPolyline.getPath();
+        google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
+        google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
+        google.maps.event.addListener(path, 'rightclick', (event) => handleVertexRightClick(event, path));
       }
+      function handleVertexDrag(path) {
+        for (let i = 0; i < path.getLength(); i++) {
+          const point = path.getAt(i);
+          const snappedPoint = findNearbyPoint(point);
+          if (snappedPoint && !point.equals(snappedPoint)) {
+            path.setAt(i, snappedPoint);
+          }
+        }
+      }
+      function handleVertexRightClick(event, path) {
+        if (event.vertex !== undefined) {
+          path.removeAt(event.vertex);
+        }
+      }
+
+      function addLatLng(event) {
+        const path = currentPolyline.getPath();
+        const newPoint = event.latLng;
+
+        // Check for nearby points to snap to
+        const snappedPoint = findNearbyPoint(newPoint);
+        if (snappedPoint) {
+          path.push(snappedPoint);
+        } else {
+          path.push(newPoint);
+        }
+      }
+      function findNearbyPoint(newPoint) {
+        for (const polyline of polylines) {
+          const path = polyline.getPath();
+          for (let i = 0; i < path.getLength(); i++) {
+            const point = path.getAt(i);
+            console.log(google.maps.geometry.spherical.computeDistanceBetween(point, newPoint));
+            if (google.maps.geometry.spherical.computeDistanceBetween(point, newPoint) <= toleranceRadius) {
+              return point;
+            }
+          }
+        }
+        return null;
+      }
+
+      function completeCurrentPolyline() {
+        currentPolyline = null;
+      }
+
 
       window.initMap = initMap;
     </script>

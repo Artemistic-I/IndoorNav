@@ -69,7 +69,21 @@
         google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
         google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
         attachDeleteMenuListener(currentPolyline);
+        attachVertexClickListener(currentPolyline);
       }
+      function attachVertexClickListener(polyline) {
+        google.maps.event.addListener(polyline, "click", (e) => {
+          if (e.vertex == undefined) {
+            return;
+          }
+          console.log(polyline.getPath().getAt(e.vertex));
+          completeCurrentPolyline();
+          startNewPolyline();
+          addLatLng(e);
+          highlightVertex(e);
+        });
+      }
+
       function handleVertexDrag(path) {
         for (let i = 0; i < path.getLength(); i++) {
           const point = path.getAt(i);
@@ -264,6 +278,7 @@
       }
 
       function completeCurrentPolyline() {
+        currentPolyline.set('icons', []);
         currentPolyline = null;
       }
 

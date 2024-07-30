@@ -68,6 +68,31 @@
         const path = currentPolyline.getPath();
         google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
         google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
+        attachDeleteMenuListener(currentPolyline);
+      }
+      function handleVertexDrag(path) {
+        for (let i = 0; i < path.getLength(); i++) {
+          const point = path.getAt(i);
+          const snappedPoint = findNearbyPoint(point);
+          if (snappedPoint && !point.equals(snappedPoint)) {
+            path.setAt(i, snappedPoint);
+          }
+        }
+      }
+
+      function addLatLng(event) {
+        const path = currentPolyline.getPath();
+        const newPoint = event.latLng;
+
+        // Check for nearby points to snap to
+        const snappedPoint = findNearbyPoint(newPoint);
+        if (snappedPoint) {
+          path.push(snappedPoint);
+        } else {
+          path.push(newPoint);
+        }
+      }
+      function attachDeleteMenuListener(polyline) {
         /**
          * A menu that lets a user delete a selected vertex of a path.
          */
@@ -160,36 +185,14 @@
         }
 
         const deleteMenu = new DeleteMenu();
-        google.maps.event.addListener(currentPolyline, "contextmenu", (e) => {
+        google.maps.event.addListener(polyline, "contextmenu", (e) => {
           // Check if click was on a vertex control point
           if (e.vertex == undefined) {
             return;
           }
 
-          deleteMenu.open(map, currentPolyline.getPath(), e.vertex);
+          deleteMenu.open(map, polyline.getPath(), e.vertex);
         });
-      }
-      function handleVertexDrag(path) {
-        for (let i = 0; i < path.getLength(); i++) {
-          const point = path.getAt(i);
-          const snappedPoint = findNearbyPoint(point);
-          if (snappedPoint && !point.equals(snappedPoint)) {
-            path.setAt(i, snappedPoint);
-          }
-        }
-      }
-
-      function addLatLng(event) {
-        const path = currentPolyline.getPath();
-        const newPoint = event.latLng;
-
-        // Check for nearby points to snap to
-        const snappedPoint = findNearbyPoint(newPoint);
-        if (snappedPoint) {
-          path.push(snappedPoint);
-        } else {
-          path.push(newPoint);
-        }
       }
       function findNearbyPoint(newPoint) {
         for (const polyline of polylines) {
@@ -292,3 +295,4 @@
     ({key: "AIzaSyCFRCi9RiQ6jNMjspjXa6wVSVH7rbBnIGc", v: "weekly"});</script>
   </body>
 </html>
+

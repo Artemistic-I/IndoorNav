@@ -52,6 +52,7 @@
         // Append the button to the DIV.
         addBranchBtnDiv.appendChild(addBranchBtn);
         map.controls[google.maps.ControlPosition.TOP_CENTER].push(addBranchBtnDiv);
+        await loadPolylines();
       }
       function startNewPolyline() {
         currentPolyline = new google.maps.Polyline({
@@ -279,7 +280,50 @@
 
       function completeCurrentPolyline() {
         currentPolyline.set('icons', []);
+        savePolyline(currentPolyline);
         currentPolyline = null;
+      }
+      async function savePolyline(polyline) {
+        const path = polyline.getPath().getArray().map(latlng => ({
+          lat: latlng.lat(),
+          lng: latlng.lng()
+        }));
+
+        const response = await fetch('/api/polylines', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ path })
+        });
+
+        if (!response.ok) {
+          console.error('Failed to save polyline');
+        }
+      }
+      async function loadPolylines() {
+        const response = await fetch('/api/polylines');
+        const polylinesData = await response.json();
+
+        polylinesData.forEach(data => {
+          const polyline = new google.maps.Polyline({
+            path: data.path.map(point => new google.maps.LatLng(point.lat, point.lng)),
+            strokeColor: "#8442f5",
+            strokeOpacity: 1.0,
+            strokeWeight: 3,
+            editable: true,
+            draggable: true,
+            map: map
+          });
+
+          polylines.push(polyline);
+
+          const path = polyline.getPath();
+          google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
+          google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
+          attachDeleteMenuListener(polyline);
+          attachVertexClickListener(polyline);
+        });
       }
 
       window.initMap = initMap;

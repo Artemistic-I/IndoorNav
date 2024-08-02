@@ -18,3 +18,12 @@ exports.getPolylines = async (req, res) => {
         res.status(500).send(error);
     }
 };
+
+exports.clearPolylines = async (req, res) => {
+    try {
+        await Polyline.deleteMany({});
+        res.status(200).send({ message: 'All polylines removed' });
+    } catch (error) {
+        res.status(500).send(error);
+    }
+};

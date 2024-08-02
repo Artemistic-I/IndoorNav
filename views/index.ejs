@@ -15,8 +15,8 @@
       let floorplanOverlay;
       let polylines = [];
       let currentPolyline;
-      const toleranceRadius = 3;
-      let highlightedVertexIndex = null;
+      const toleranceRadius = 3; //snap to point radius
+      let highlightedVertexIndex = null; //next line will be drawn from this vetrtex
 
       async function initMap() {
         map = new google.maps.Map(document.getElementById("map"), {
@@ -45,13 +45,13 @@
           highlightVertex(event);
         });
         // Create the DIV to hold the custom button.
-        const addBranchBtnDiv = document.createElement("div");
+        const addSaveBtnDiv = document.createElement("div");
         // Create the button.
-        const addBranchBtn = createBranchBtn(map);
+        const addSaveBtn = createSaveBtn(map);
 
         // Append the button to the DIV.
-        addBranchBtnDiv.appendChild(addBranchBtn);
-        map.controls[google.maps.ControlPosition.TOP_CENTER].push(addBranchBtnDiv);
+        addSaveBtnDiv.appendChild(addSaveBtn);
+        map.controls[google.maps.ControlPosition.TOP_CENTER].push(addSaveBtnDiv);
         await loadPolylines();
       }
       function startNewPolyline() {
@@ -252,7 +252,7 @@
           currentPolyline.set('icons', icons);
         }
       }
-      function createBranchBtn(map) {
+      function createSaveBtn(map) {
         const controlButton = document.createElement("button");
 
         // Set CSS for the control.
@@ -268,19 +268,18 @@
         controlButton.style.margin = "8px 0 22px";
         controlButton.style.padding = "0 5px";
         controlButton.style.textAlign = "center";
-        controlButton.textContent = "New branch";
-        controlButton.title = "Click to start a new branch";
+        controlButton.textContent = "Save";
+        controlButton.title = "Click to save the paths";
         controlButton.type = "button";
         // Setup the click event listeners: simply set the map to Chicago.
         controlButton.addEventListener("click", () => {
-          completeCurrentPolyline();
+          overwriteOldPolylines();
         });
         return controlButton;
       }
 
       function completeCurrentPolyline() {
         currentPolyline.set('icons', []);
-        savePolyline(currentPolyline);
         currentPolyline = null;
       }
       async function savePolyline(polyline) {
@@ -324,6 +323,21 @@
           attachDeleteMenuListener(polyline);
           attachVertexClickListener(polyline);
         });
+      }
+      async function overwriteOldPolylines() {
+        const response = await fetch('/api/polylines', {
+          method: 'DELETE'
+        });
+        if (response.ok) {
+          console.log('All polylines have been deleted.');
+          let i;
+          for(const polyline of polylines) {
+            await savePolyline(polyline);
+            console.log("polyline saved ", i);
+          }
+        } else {
+          alert('Failed to delete polylines.');
+        }
       }
 
       window.initMap = initMap;

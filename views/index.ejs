@@ -71,7 +71,7 @@
         const addFloorButton = document.createElement("input");
 
         addFloorButton.type = "button";
-        addFloorButton.value = "Upload floorplan image";
+        addFloorButton.value = "New floor +";
         addFloorButton.classList.add("button", "button-secondary");
 
         const instructionsElement = document.createElement("p");
@@ -84,7 +84,11 @@
         map.controls[google.maps.ControlPosition.LEFT_TOP].push(instructionsElement);
 
         map.addListener("click", (e) => {
-          geocode({ location: e.latLng });
+          map.setCenter(e.latLng); //do stuff with coordinates
+          togglePopup();
+        });
+        addFloorButton.addEventListener("click", () => {
+          addFloor();
         });
         submitButton.addEventListener("click", () => {
           geocode({address: inputText.value});
@@ -95,7 +99,6 @@
         geocoder.geocode(request, (results, status) => {
           if (status === "OK") {
             map.setCenter(results[0].geometry.location);
-            formatResponse(results[0]);
           } else {
             alert("Geocode was not successful for the following reason: " + status);
           }
@@ -103,7 +106,7 @@
       }
 
       function addFloor() {
-        //code to add floor
+        togglePopup();
       }
       function startNewPolyline() {
         currentPolyline = new google.maps.Polyline({
@@ -392,6 +395,10 @@
           alert('Failed to delete polylines.');
         }
       }
+      function togglePopup() {
+        const popup = document.getElementById("popup");
+        popup.style.display = popup.style.display === "none" || popup.style.display === "" ? "block" : "none";
+      }
 
       window.initMap = initMap;
     </script>
@@ -421,7 +428,7 @@
       }
 
       /* Styles for the input text box */
-      input[type="text"] {
+      input[type="text"], input[type="number"] {
         width: 300px;
         height: 40px;
         padding: 10px;
@@ -434,7 +441,7 @@
       }
 
       /* Styles for the buttons */
-      input[type="button"] {
+      input[type="button"], input[type="submit"] {
         padding-left: 5px;
         padding-right: 5px;
         height: 40px;
@@ -475,9 +482,103 @@
         border-radius: 8px; /* Rounded edges */
         box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1); /* Optional: subtle shadow for better visual separation */
       }
+      .popup {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: #fff;
+        border: 1px solid black;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.2);
+        z-index: 1000;
+        display: none; /* Hidden by default */
+        padding: 20px;
+        border-radius: 10px;
+        width: 400px; /* Set width to 400px */
+      }
+
+      .popup-content {
+        position: relative;
+        padding: 10px;
+      }
+
+      .close-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        font-size: 20px;
+        cursor: pointer;
+        color: #333;
+      }
+
+      .popup h2 {
+        margin-top: 0;
+        font-size: 24px;
+        font-weight: 400;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+      }
+
+      .popup label {
+        font-size: 20px;
+        display: block;
+      }
+
+      .popup input[type="text"], .popup input[type="number"], .popup input[type="file"] {
+        width: calc(100% - 20px);
+        padding: 10px;
+        margin: 10px 0;
+        font-size: 16px;
+        border: 1px solid #007bff;
+        border-radius: 5px;
+      }
+
+      .popup input[type="submit"], .popup button {
+        width: 100%;
+        padding: 10px;
+        font-size: 16px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+      }
+
+      .popup input[type="submit"]:hover {
+        background-color: #0056b3;
+      }
+      .button-container {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 10px;
+      }
+      .button-container button, .button-container input[type="submit"] {
+        height: 40px;
+      }
     </style>
   </head>
   <body>
+  <div id="popup" class="popup">
+    <div class="popup-content">
+      <form>
+        <label for="name">Floor name:</label><br>
+        <input type="text" id="name" name="name" required><br><br>
+        <label for="order">Order:</label><br>
+        <input type="number" value="0" id="order" name="order" required><br><br>
+
+        <label for="image">Upload an image of the floorplan:</label><br>
+        <input type="file" id="image" name="image" accept="image/*" required><br><br>
+
+        <div class="button-container">
+          <button type="button" class="button-primary" style="background-color: red;" onclick="togglePopup()">Cancel</button>
+          <input type="submit" value="Create" class="button-primary">
+        </div>
+      </form>
+    </div>
+  </div>
   <div id="map"></div>
   <script>(g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.${c}apis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})
     ({key: "AIzaSyCFRCi9RiQ6jNMjspjXa6wVSVH7rbBnIGc", v: "weekly"});</script>

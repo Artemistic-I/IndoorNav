@@ -12,6 +12,7 @@
     <script>
       //let poly;
       let map;
+      let geocoder;
       let floorplanOverlay;
       let polylines = [];
       let currentPolyline;
@@ -45,14 +46,64 @@
           highlightVertex(event);
         });
         // Create the DIV to hold the custom button.
-        const addSaveBtnDiv = document.createElement("div");
+        const saveBtnDiv = document.createElement("div");
         // Create the button.
-        const addSaveBtn = createSaveBtn(map);
+        const saveBtn = createSaveBtn(map);
 
         // Append the button to the DIV.
-        addSaveBtnDiv.appendChild(addSaveBtn);
-        map.controls[google.maps.ControlPosition.TOP_CENTER].push(addSaveBtnDiv);
+        saveBtnDiv.appendChild(saveBtn);
+        map.controls[google.maps.ControlPosition.TOP_RIGHT].push(saveBtnDiv);
         await loadPolylines();
+
+        geocoder = new google.maps.Geocoder();
+
+        const inputText = document.createElement("input");
+
+        inputText.type = "text";
+        inputText.placeholder = "Enter a postcode";
+
+        const submitButton = document.createElement("input");
+
+        submitButton.type = "button";
+        submitButton.value = "Search";
+        submitButton.classList.add("button", "button-primary");
+
+        const addFloorButton = document.createElement("input");
+
+        addFloorButton.type = "button";
+        addFloorButton.value = "Upload floorplan image";
+        addFloorButton.classList.add("button", "button-secondary");
+
+        const instructionsElement = document.createElement("p");
+        instructionsElement.id = "instructions";
+        instructionsElement.innerHTML =
+                "<strong>Tip</strong>: Click on the map to select the exact location of the bulding";
+        map.controls[google.maps.ControlPosition.TOP_LEFT].push(inputText);
+        map.controls[google.maps.ControlPosition.TOP_LEFT].push(submitButton);
+        map.controls[google.maps.ControlPosition.TOP_CENTER].push(addFloorButton);
+        map.controls[google.maps.ControlPosition.LEFT_TOP].push(instructionsElement);
+
+        map.addListener("click", (e) => {
+          geocode({ location: e.latLng });
+        });
+        submitButton.addEventListener("click", () => {
+          geocode({address: inputText.value});
+          document.getElementById("instructions").style.display = 'block';
+        });
+      }
+      function geocode(request) {
+        geocoder.geocode(request, (results, status) => {
+          if (status === "OK") {
+            map.setCenter(results[0].geometry.location);
+            formatResponse(results[0]);
+          } else {
+            alert("Geocode was not successful for the following reason: " + status);
+          }
+        });
+      }
+
+      function addFloor() {
+        //code to add floor
       }
       function startNewPolyline() {
         currentPolyline = new google.maps.Polyline({
@@ -279,8 +330,10 @@
       }
 
       function completeCurrentPolyline() {
-        currentPolyline.set('icons', []);
-        currentPolyline = null;
+        if (currentPolyline) {
+          currentPolyline.set('icons', []);
+          currentPolyline = null;
+        }
       }
       async function savePolyline(polyline) {
         const path = polyline.getPath().getArray().map(latlng => ({
@@ -359,6 +412,68 @@
         max-width: 50px;
         z-index: 1000;
         cursor: pointer;
+      }
+      /* General styles for the container */
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+      }
+
+      /* Styles for the input text box */
+      input[type="text"] {
+        width: 300px;
+        height: 40px;
+        padding: 10px;
+        margin: 10px 0;
+        margin-left: 20px;
+        font-size: 18px;
+        border: 1px solid #007bff;
+        border-radius: 8px;
+        box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      /* Styles for the buttons */
+      input[type="button"] {
+        padding-left: 5px;
+        padding-right: 5px;
+        height: 40px;
+        margin: 10px 5px;
+        font-size: 18px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+      }
+
+      .button-primary {
+        background-color: #007bff;
+        color: white;
+      }
+
+      .button-primary:hover {
+        background-color: #0056b3;
+      }
+
+      .button-secondary {
+        background-color: #6c757d;
+        color: white;
+      }
+
+      .button-secondary:hover {
+        background-color: #5a6268;
+      }
+      #instructions {
+        display: none;
+        margin: 20px 0;
+        margin-left: 20px;
+        padding: 10px;
+        font-size: 18px;
+        color: #333;
+        border: 1px solid black;
+        background-color: #f0f0f0; /* Light grey background */
+        border-radius: 8px; /* Rounded edges */
+        box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1); /* Optional: subtle shadow for better visual separation */
       }
     </style>
   </head>

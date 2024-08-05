@@ -94,6 +94,24 @@
           geocode({address: inputText.value});
           document.getElementById("instructions").style.display = 'block';
         });
+        document.getElementById('floorPlanForm').addEventListener('submit', async function (event) {
+          event.preventDefault();
+
+          const formData = new FormData(this);
+
+          const response = await fetch('/api/floorPlans', {
+            method: 'POST',
+            body: formData
+          });
+
+          if (response.ok) {
+            alert('Floor plan created successfully');
+            togglePopup();
+            // Optionally, refresh the page or update the UI with the new floor plan
+          } else {
+            alert('Failed to create floor plan');
+          }
+        });
       }
       function geocode(request) {
         geocoder.geocode(request, (results, status) => {
@@ -563,7 +581,7 @@
   <body>
   <div id="popup" class="popup">
     <div class="popup-content">
-      <form>
+      <form id="floorPlanForm" enctype="multipart/form-data">
         <label for="name">Floor name:</label><br>
         <input type="text" id="name" name="name" required><br><br>
         <label for="order">Order:</label><br>

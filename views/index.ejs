@@ -13,42 +13,21 @@
       //let poly;
       let map;
       let geocoder;
-      let floorplanOverlay;
+      let imageOverlay;
+      let floorplanCoordinates;
       let polylines = [];
       let currentPolyline;
       const toleranceRadius = 3; //snap to point radius
       let highlightedVertexIndex = null; //next line will be drawn from this vetrtex
 
       async function initMap() {
-        map = new google.maps.Map(document.getElementById("map"), {
-          zoom: 20,
-          center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
-          disableDefaultUI: true,
-        });
-        const imageBounds = {
-          north: 53.3818981375074,
-          south: 53.38133970460098,
-          east: -1.48135180383467,
-          west: -1.4828341389139235,
-        };
+        await loadFloorPlan();
 
-        floorplanOverlay = new google.maps.GroundOverlay(
-                "https://www.sheffield.ac.uk/sites/default/files/styles/two_thirds_2x/public/2020-01/Diamond%20Fourth%20Floor.jpg?h=ce4ee067&itok=7296wBMS",
-                imageBounds,
-        );
-        floorplanOverlay.setMap(map);
-
-        floorplanOverlay.addListener("click", (event) => {
-          if (!currentPolyline) {
-            startNewPolyline();
-          }
-          addLatLng(event);
-          highlightVertex(event);
-        });
         // Create the DIV to hold the custom button.
         const saveBtnDiv = document.createElement("div");
         // Create the button.
         const saveBtn = createSaveBtn(map);
+
 
         // Append the button to the DIV.
         saveBtnDiv.appendChild(saveBtn);
@@ -68,11 +47,14 @@
         submitButton.value = "Search";
         submitButton.classList.add("button", "button-primary");
 
-        const addFloorButton = document.createElement("input");
-
-        addFloorButton.type = "button";
-        addFloorButton.value = "New floor +";
-        addFloorButton.classList.add("button", "button-secondary");
+        const rotationSlider = document.createElement("input");
+        rotationSlider.type = "range";
+        rotationSlider.id = "rotationSlider";
+        rotationSlider.min = "-180";
+        rotationSlider.max = "180";
+        rotationSlider.step = "1";
+        rotationSlider.value = "0";
+        rotationSlider.classList.add("button", "button-secondary");
 
         const instructionsElement = document.createElement("p");
         instructionsElement.id = "instructions";
@@ -80,24 +62,37 @@
                 "<strong>Tip</strong>: Click on the map to select the exact location of the bulding";
         map.controls[google.maps.ControlPosition.TOP_LEFT].push(inputText);
         map.controls[google.maps.ControlPosition.TOP_LEFT].push(submitButton);
-        map.controls[google.maps.ControlPosition.TOP_CENTER].push(addFloorButton);
+        map.controls[google.maps.ControlPosition.TOP_CENTER].push(rotationSlider);
         map.controls[google.maps.ControlPosition.LEFT_TOP].push(instructionsElement);
 
         map.addListener("click", (e) => {
-          map.setCenter(e.latLng); //do stuff with coordinates
+          floorplanCoordinates = e.latLng;
+          map.setCenter(floorplanCoordinates); //do stuff with coordinates
           togglePopup();
         });
-        addFloorButton.addEventListener("click", () => {
-          addFloor();
+        rotationSlider.addEventListener('input', (event) => {
+          const angle = parseInt(event.target.value, 10);
+          imageOverlay.setRotation(angle);
         });
+
         submitButton.addEventListener("click", () => {
           geocode({address: inputText.value});
           document.getElementById("instructions").style.display = 'block';
         });
+        // floorplanOverlay.addListener("click", (event) => {
+        //   if (!currentPolyline) {
+        //     startNewPolyline();
+        //   }
+        //   addLatLng(event);
+        //   highlightVertex(event);
+        // });
         document.getElementById('floorPlanForm').addEventListener('submit', async function (event) {
           event.preventDefault();
 
           const formData = new FormData(this);
+          formData.append('center', JSON.stringify(floorplanCoordinates));
+          floorplanCoordinates = null;
+
 
           const response = await fetch('/api/floorPlans', {
             method: 'POST',
@@ -123,8 +118,128 @@
         });
       }
 
-      function addFloor() {
-        togglePopup();
+      async function loadFloorPlan() {
+        const response = await fetch('/api/floorPlans');
+        const floorPlans = await response.json();
+        console.log(floorPlans);
+        floorPlans.sort((a, b) => a.order - b.order);
+        let center = floorPlans[0].center;
+        if (center) {
+          map = new google.maps.Map(document.getElementById("map"), {
+            zoom: 20,
+            center: center,
+            disableDefaultUI: true,
+          });
+        } else {
+          map = new google.maps.Map(document.getElementById("map"), {
+            zoom: 19,
+            center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
+            disableDefaultUI: true,
+          });
+        }
+        class CustomImageOverlay extends google.maps.OverlayView {
+          constructor(imageUrl, corners, map) {
+            super();
+            this.imageUrl = imageUrl;
+            this.corners = corners; // An array of LatLng objects [northEast, northWest, southEast, southWest]
+            this.map = map;
+            this.div = null;
+            this.rotation = 0; // Rotation angle in degrees
+            this.setMap(map);
+          }
+
+          onAdd() {
+            this.div = document.createElement('div');
+            this.div.style.border = 'solid #007bff';
+            this.div.style.borderWidth = '2px';
+            this.div.style.position = 'absolute';
+
+            const img = document.createElement('img');
+            img.src = this.imageUrl;
+            img.style.width = '100%';
+            img.style.height = '100%';
+            img.style.position = 'absolute';
+            img.style.transformOrigin = 'center';
+            img.style.opacity = '0.5';
+            this.img = img;
+            this.div.appendChild(img);
+
+            const panes = this.getPanes();
+            panes.overlayLayer.appendChild(this.div);
+          }
+
+          draw() {
+            const overlayProjection = this.getProjection();
+
+            const ne = overlayProjection.fromLatLngToDivPixel(this.corners[0]);
+            const sw = overlayProjection.fromLatLngToDivPixel(this.corners[3]);
+
+            const div = this.div;
+            div.style.left = sw.x + 'px';
+            div.style.top = ne.y + 'px';
+            div.style.width = (ne.x - sw.x) + 'px';
+            div.style.height = (sw.y - ne.y) + 'px';
+
+            // Apply rotation transform
+            this.div.style.transform = `rotate(${this.rotation}deg)`;
+          }
+
+          onRemove() {
+            this.div.parentNode.removeChild(this.div);
+            this.div = null;
+          }
+
+          updateCorners(corners) {
+            this.corners = corners;
+            this.draw();
+          }
+
+          setRotation(angle) {
+            this.rotation = angle;
+            this.draw();
+          }
+        }
+        //############################
+
+        // Define the distance from the center to the corners (in degrees)
+        const latOffset = 0.000278; // Approximately 31 meters north/south
+        const lngOffset = 0.000278; // Approximately 31 meters east/west
+
+        console.log(center);
+        // Calculate the initial corners based on the center coordinate
+        let corners = [
+          { lat: center.lat + latOffset, lng: center.lng + lngOffset }, // northEast
+          { lat: center.lat + latOffset, lng: center.lng - lngOffset }, // northWest
+          { lat: center.lat - latOffset, lng: center.lng + lngOffset }, // southEast
+          { lat: center.lat - latOffset, lng: center.lng - lngOffset }  // southWest
+        ];
+
+          imageOverlay = new CustomImageOverlay(floorPlans[0].img, corners, map);
+
+          const cornerMarkers = {
+            northEast: new google.maps.Marker({
+              position: corners[0],
+              map: map,
+              draggable: true,
+              title: "North-East Corner"
+            }),
+            southWest: new google.maps.Marker({
+              position: corners[3],
+              map: map,
+              draggable: true,
+              title: "South-West Corner"
+            }),
+          };
+
+          function updateCorners() {
+            corners[0] = cornerMarkers.northEast.getPosition();
+            corners[3] = cornerMarkers.southWest.getPosition()
+            imageOverlay.updateCorners(corners);
+          }
+
+          for (let key in cornerMarkers) {
+            cornerMarkers[key].addListener('drag', updateCorners);
+          }
       }
       function startNewPolyline() {
         currentPolyline = new google.maps.Polyline({
@@ -541,6 +656,10 @@
       .popup label {
         font-size: 20px;
         display: block;
+      }
+      input[type="range"] {
+        margin-top: 20px;
+        min-width: 40px;
       }
 
       .popup input[type="text"], .popup input[type="number"], .popup input[type="file"] {

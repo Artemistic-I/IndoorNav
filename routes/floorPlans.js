@@ -18,5 +18,7 @@ const upload = multer({ storage: storage });
 // Route to create a new floor plan with image upload
 router.post('/', upload.single('image'), floorPlanController.createFloorPlan);
 
+// Route to get all floor plans
+router.get('/', floorPlanController.getAllFloorPlans);
 
 module.exports = router;

@@ -22,19 +22,23 @@
       const toleranceRadius = 3; //snap to point radius
       let highlightedVertexIndex = null; //next line will be drawn from this vetrtex
       let currentFloorPlanOrder;
+      const FloorPlanOptions = {
+        FLOORS: 'Floors',
+        POINTS_OF_INTEREST: 'Points of interest',
+        PATHS: 'Paths'
+      };
 
       async function initMap() {
         await loadFloorPlan();
 
-        // Create the DIV to hold the custom button.
-        const saveBtnDiv = document.createElement("div");
         // Create the button.
         const saveBtn = createSaveBtn(map);
+        saveBtn.classList.add("button", "button-primary");
+        saveBtn.style.padding = "10px";
+        saveBtn.style.borderRadius = "4px";
+        saveBtn.style.fontSize = "18px";
+        saveBtn.style.backgroundColor = "#e07e22";
 
-
-        // Append the button to the DIV.
-        saveBtnDiv.appendChild(saveBtn);
-        map.controls[google.maps.ControlPosition.TOP_RIGHT].push(saveBtnDiv);
         await loadPolylines();
 
         geocoder = new google.maps.Geocoder();
@@ -80,10 +84,40 @@
         instructionsElement.id = "instructions";
         instructionsElement.innerHTML =
                 "<strong>Tip</strong>: Click on the map to select the exact location of the bulding";
+
+        const dropdown = document.createElement('select');
+        dropdown.id = 'editModeDropdown';
+        dropdown.style.marginTop = "20px";
+        dropdown.style.paddingLeft = "10px";
+        dropdown.style.fontSize = "18px"
+        // Step 3: Add options to the dropdown menu
+        const options = [
+          { value: FloorPlanOptions.FLOORS},
+          { value: FloorPlanOptions.POINTS_OF_INTEREST},
+          { value: FloorPlanOptions.PATHS},
+        ];
+
+        options.forEach(optionData => {
+          const option = document.createElement('option');
+          option.value = optionData.value;
+          option.text = optionData.value;
+          dropdown.appendChild(option);
+        });
+
+        const topRightHContainer = document.createElement("div");
+        topRightHContainer.id = "topRightHContainer";
+        topRightHContainer.classList.add("horizontal-container");
+        topRightHContainer.appendChild(dropdown);
+        topRightHContainer.appendChild(saveBtn);
+
+        
+
+        map.controls[google.maps.ControlPosition.TOP_RIGHT].push(topRightHContainer);
         map.controls[google.maps.ControlPosition.TOP_LEFT].push(inputAddress);
         map.controls[google.maps.ControlPosition.TOP_LEFT].push(searchButton);
         map.controls[google.maps.ControlPosition.TOP_CENTER].push(sliderContainer);
         map.controls[google.maps.ControlPosition.LEFT_TOP].push(instructionsElement);
+        map.controls[google.maps.ControlPosition.TOP_RIGHT].push(dropdown);
 
         mapOnCLickListener = map.addListener("click", (e) => {
           floorplanCoordinates = e.latLng;
@@ -476,19 +510,6 @@
       function createSaveBtn(map) {
         const controlButton = document.createElement("button");
 
-        // Set CSS for the control.
-        controlButton.style.backgroundColor = "#15ed6f";
-        controlButton.style.border = "2px solid #fff";
-        controlButton.style.borderRadius = "3px";
-        controlButton.style.boxShadow = "0 2px 6px rgba(0,0,0,.3)";
-        controlButton.style.color = "rgb(25,25,25)";
-        controlButton.style.cursor = "pointer";
-        controlButton.style.fontFamily = "Roboto,Arial,sans-serif";
-        controlButton.style.fontSize = "16px";
-        controlButton.style.lineHeight = "38px";
-        controlButton.style.margin = "8px 0 22px";
-        controlButton.style.padding = "0 5px";
-        controlButton.style.textAlign = "center";
         controlButton.textContent = "Save";
         controlButton.title = "Click to save the paths";
         controlButton.type = "button";
@@ -634,6 +655,24 @@
         border-radius: 8px;
         box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
       }
+      select {
+        width: 100px;
+        height: 40px;
+        padding-left: 10px;
+        margin-top: 10px;
+        margin-right: 20px;
+        font-size: 18px;
+        border: 1px solid #007bff;
+        border-radius: 8px;
+        box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
+        background-color: #fff;
+      }
+
+      /* Styles for option elements */
+      select option {
+        padding: 10px;
+        font-size: 18px;
+      }
 
       /* Styles for the buttons */
       input[type="button"], input[type="submit"] {
@@ -708,6 +747,14 @@
         box-shadow: none; /* Remove shadow for a flatter look */
         font-style: italic;
         opacity: 70%;
+      }
+      .horizontal-container {
+        display: flex;
+        flex-direction: row;
+        margin-top: 10px;
+        padding: 10px;
+        gap: 10px;
+        align-items: center;
       }
 
       .popup-content {

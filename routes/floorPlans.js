@@ -21,4 +21,7 @@ router.post('/', upload.single('image'), floorPlanController.createFloorPlan);
 // Route to get all floor plans
 router.get('/', floorPlanController.getAllFloorPlans);
 
+// Route to update a floor plan by order
+router.put('/order/:order', floorPlanController.updateFloorPlanByOrder);
+
 module.exports = router;

@@ -15,10 +15,12 @@
       let geocoder;
       let imageOverlay;
       let floorplanCoordinates;
+      let cornerMarkers;
       let polylines = [];
       let currentPolyline;
       const toleranceRadius = 3; //snap to point radius
       let highlightedVertexIndex = null; //next line will be drawn from this vetrtex
+      let currentFloorPlanOrder;
 
       async function initMap() {
         await loadFloorPlan();
@@ -91,6 +93,11 @@
 
           const formData = new FormData(this);
           formData.append('center', JSON.stringify(floorplanCoordinates));
+          formData.append('rotation', imageOverlay.rotation);
+          formData.append('corners', JSON.stringify({
+            northEast: cornerMarkers.northEast.getPosition().toJSON(),
+            southWest: cornerMarkers.southWest.getPosition().toJSON()
+          }));
           floorplanCoordinates = null;
 
 
@@ -124,6 +131,8 @@
         console.log(floorPlans);
         floorPlans.sort((a, b) => a.order - b.order);
         let center = floorPlans[0].center;
+        currentFloorPlanOrder = floorPlans[0].order;
+        console.log("currentFloorPlanOrder", currentFloorPlanOrder);
         if (center) {
           map = new google.maps.Map(document.getElementById("map"), {
             zoom: 20,
@@ -138,13 +147,13 @@
           });
         }
         class CustomImageOverlay extends google.maps.OverlayView {
-          constructor(imageUrl, corners, map) {
+          constructor(imageUrl, corners, map, rotation) {
             super();
             this.imageUrl = imageUrl;
             this.corners = corners; // An array of LatLng objects [northEast, northWest, southEast, southWest]
             this.map = map;
             this.div = null;
-            this.rotation = 0; // Rotation angle in degrees
+            this.rotation = rotation || 0; // Rotation angle in degrees
             this.setMap(map);
           }
 
@@ -171,8 +180,8 @@
           draw() {
             const overlayProjection = this.getProjection();
 
-            const ne = overlayProjection.fromLatLngToDivPixel(this.corners[0]);
-            const sw = overlayProjection.fromLatLngToDivPixel(this.corners[3]);
+            const ne = overlayProjection.fromLatLngToDivPixel(this.corners.northEast);
+            const sw = overlayProjection.fromLatLngToDivPixel(this.corners.southWest);
 
             const div = this.div;
             div.style.left = sw.x + 'px';
@@ -207,24 +216,28 @@
 
         console.log(center);
         // Calculate the initial corners based on the center coordinate
-        let corners = [
-          { lat: center.lat + latOffset, lng: center.lng + lngOffset }, // northEast
-          { lat: center.lat + latOffset, lng: center.lng - lngOffset }, // northWest
-          { lat: center.lat - latOffset, lng: center.lng + lngOffset }, // southEast
-          { lat: center.lat - latOffset, lng: center.lng - lngOffset }  // southWest
-        ];
+        let corners;
+        if(!floorPlans[0].corners) {
+          corners = {
+            northEast: {lat: center.lat + latOffset, lng: center.lng + lngOffset}, // northEast
+            //northWest: {lat: center.lat + latOffset, lng: center.lng - lngOffset}, // northWest
+            //southEast: {lat: center.lat - latOffset, lng: center.lng + lngOffset}, // southEast
+            southWest: {lat: center.lat - latOffset, lng: center.lng - lngOffset}  // southWest
+          };
+        } else {
+          corners = floorPlans[0].corners;
+        }
+          imageOverlay = new CustomImageOverlay(floorPlans[0].img, corners, map, floorPlans[0].rotation);
 
-          imageOverlay = new CustomImageOverlay(floorPlans[0].img, corners, map);
-
-          const cornerMarkers = {
+          cornerMarkers = {
             northEast: new google.maps.Marker({
-              position: corners[0],
+              position: corners.northEast,
               map: map,
               draggable: true,
               title: "North-East Corner"
             }),
             southWest: new google.maps.Marker({
-              position: corners[3],
+              position: corners.southWest,
               map: map,
               draggable: true,
               title: "South-West Corner"
@@ -232,8 +245,8 @@
           };
 
           function updateCorners() {
-            corners[0] = cornerMarkers.northEast.getPosition();
-            corners[3] = cornerMarkers.southWest.getPosition()
+            corners.northEast = cornerMarkers.northEast.getPosition();
+            corners.southWest = cornerMarkers.southWest.getPosition()
             imageOverlay.updateCorners(corners);
           }
 
@@ -459,8 +472,36 @@
         controlButton.title = "Click to save the paths";
         controlButton.type = "button";
         // Setup the click event listeners: simply set the map to Chicago.
-        controlButton.addEventListener("click", () => {
-          overwriteOldPolylines();
+        controlButton.addEventListener("click", async () => {
+          //overwriteOldPolylines();
+          if (currentFloorPlanOrder === null || currentFloorPlanOrder === undefined) {
+            alert('No floor plan selected');
+            return;
+          }
+
+          const updateData = {
+            rotation: imageOverlay.rotation,
+            corners: JSON.stringify({
+              northEast: { lat: cornerMarkers.northEast.getPosition().lat(), lng: cornerMarkers.northEast.getPosition().lng() },
+              southWest: { lat: cornerMarkers.southWest.getPosition().lat(), lng: cornerMarkers.southWest.getPosition().lng() }
+            })
+          };
+          console.log(cornerMarkers.northEast.getPosition().toJSON());
+
+          const response = await fetch(`/api/floorPlans/order/${currentFloorPlanOrder}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(updateData)
+          });
+
+          if (response.ok) {
+            alert('Floor plan updated successfully');
+            //await loadFloorPlans(); // Optionally, refresh the page or update the UI with the new floor plan
+          } else {
+            alert('Failed to update floor plan');
+          }
         });
         return controlButton;
       }

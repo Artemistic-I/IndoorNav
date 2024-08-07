@@ -7,6 +7,11 @@ const FloorPlanSchema = new mongoose.Schema({
     center: {
         lat: { type: Number, required: true },
         lng: { type: Number, required: true }
+    },
+    rotation: { type: Number, required: false },
+    corners: {
+        northEast: { lat: Number, lng: Number },
+        southWest: { lat: Number, lng: Number }
     }
 });
 

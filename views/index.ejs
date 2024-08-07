@@ -12,6 +12,7 @@
     <script>
       //let poly;
       let map;
+      let mapOnCLickListener;
       let geocoder;
       let imageOverlay;
       let floorplanCoordinates;
@@ -38,16 +39,18 @@
 
         geocoder = new google.maps.Geocoder();
 
-        const inputText = document.createElement("input");
+        const inputAddress = document.createElement("input");
 
-        inputText.type = "text";
-        inputText.placeholder = "Enter a postcode";
+        inputAddress.type = "text";
+        inputAddress.placeholder = "Enter a postcode";
+        inputAddress.id = "inputAddress";
 
-        const submitButton = document.createElement("input");
+        const searchButton = document.createElement("input");
 
-        submitButton.type = "button";
-        submitButton.value = "Search";
-        submitButton.classList.add("button", "button-primary");
+        searchButton.type = "button";
+        searchButton.value = "Search";
+        searchButton.id = "searchButton";
+        searchButton.classList.add("button", "button-primary");
 
         const rotationSlider = document.createElement("input");
         rotationSlider.type = "range";
@@ -55,21 +58,36 @@
         rotationSlider.min = "-180";
         rotationSlider.max = "180";
         rotationSlider.step = "1";
-        rotationSlider.value = "0";
-        rotationSlider.classList.add("button", "button-secondary");
+        if (imageOverlay) {
+          rotationSlider.value = imageOverlay.rotation;
+        } else {
+          rotationSlider.value = "0";
+        }
+        //rotationSlider.style.display = "none";
+        //rotationSlider.classList.add("button", "button-secondary");
+        const sliderLabel = document.createElement("p");
+        sliderLabel.id = "sliderLabel";
+        sliderLabel.classList.add("button-label");
+        sliderLabel.innerHTML = "Adjust rotation";
+
+        const sliderContainer = document.createElement("div");
+        sliderContainer.id = "sliderContainer";
+        sliderContainer.classList.add("vertical-container");
+        sliderContainer.appendChild(sliderLabel);
+        sliderContainer.appendChild(rotationSlider);
 
         const instructionsElement = document.createElement("p");
         instructionsElement.id = "instructions";
         instructionsElement.innerHTML =
                 "<strong>Tip</strong>: Click on the map to select the exact location of the bulding";
-        map.controls[google.maps.ControlPosition.TOP_LEFT].push(inputText);
-        map.controls[google.maps.ControlPosition.TOP_LEFT].push(submitButton);
-        map.controls[google.maps.ControlPosition.TOP_CENTER].push(rotationSlider);
+        map.controls[google.maps.ControlPosition.TOP_LEFT].push(inputAddress);
+        map.controls[google.maps.ControlPosition.TOP_LEFT].push(searchButton);
+        map.controls[google.maps.ControlPosition.TOP_CENTER].push(sliderContainer);
         map.controls[google.maps.ControlPosition.LEFT_TOP].push(instructionsElement);
 
-        map.addListener("click", (e) => {
+        mapOnCLickListener = map.addListener("click", (e) => {
           floorplanCoordinates = e.latLng;
-          map.setCenter(floorplanCoordinates); //do stuff with coordinates
+          map.setCenter(floorplanCoordinates);
           togglePopup();
         });
         rotationSlider.addEventListener('input', (event) => {
@@ -77,8 +95,8 @@
           imageOverlay.setRotation(angle);
         });
 
-        submitButton.addEventListener("click", () => {
-          geocode({address: inputText.value});
+        searchButton.addEventListener("click", () => {
+          geocode({address: inputAddress.value});
           document.getElementById("instructions").style.display = 'block';
         });
         // floorplanOverlay.addListener("click", (event) => {
@@ -107,8 +125,11 @@
           });
 
           if (response.ok) {
-            alert('Floor plan created successfully');
             togglePopup();
+            google.maps.event.removeListener(mapOnCLickListener);
+            mapOnCLickListener = null;
+            alert('Floor plan created successfully');
+
             // Optionally, refresh the page or update the UI with the new floor plan
           } else {
             alert('Failed to create floor plan');
@@ -644,6 +665,11 @@
       .button-secondary:hover {
         background-color: #5a6268;
       }
+      .button-label {
+
+        font-size: 16px; /* Slightly smaller font size for subtlety */
+        color: #555; /* Softer color for text */
+      }
       #instructions {
         display: none;
         margin: 20px 0;
@@ -669,6 +695,19 @@
         padding: 20px;
         border-radius: 10px;
         width: 400px; /* Set width to 400px */
+      }
+      .vertical-container {
+        display: flex;
+        flex-direction: column;
+        margin-top: 10px;
+        padding: 10px;
+        align-items: center;
+        background-color: #fafafa;
+        border: 1px solid #ddd; /* Light border to distinguish the label */
+        border-radius: 18px; /* Slightly rounded edges */
+        box-shadow: none; /* Remove shadow for a flatter look */
+        font-style: italic;
+        opacity: 70%;
       }
 
       .popup-content {

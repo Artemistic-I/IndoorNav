@@ -16,8 +16,12 @@
       let geocoder;
       let imageOverlay;
       let floorplanCoordinates;
+      let allFloorplans;
       let cornerMarkers;
       let polylines = [];
+      let overlays = [];
+      let markerPairs = [];
+      let favColor = "#0cfabf";
       let currentPolyline;
       const toleranceRadius = 3; //snap to point radius
       let highlightedVertexIndex = null; //next line will be drawn from this vetrtex
@@ -29,7 +33,22 @@
       };
 
       async function initMap() {
-        await loadFloorPlan();
+        await loadFloors();
+        if (allFloorplans && allFloorplans.length > 0) {
+          center = allFloorplans[0].center;
+          map = new google.maps.Map(document.getElementById("map"), {
+            zoom: 20,
+            center: center,
+            disableDefaultUI: true,
+          });
+        } else {
+          map = new google.maps.Map(document.getElementById("map"), {
+            zoom: 19,
+            center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
+            disableDefaultUI: true,
+          });
+        }
+        displayFloorPlan(0);
 
         // Create the button.
         const saveBtn = createSaveBtn(map);
@@ -37,9 +56,11 @@
         saveBtn.style.padding = "10px";
         saveBtn.style.borderRadius = "4px";
         saveBtn.style.fontSize = "18px";
-        saveBtn.style.backgroundColor = "#e07e22";
+        saveBtn.style.backgroundColor = "orange";
+        saveBtn.style.border = "1px solid black"
 
         await loadPolylines();
+        createFloorSelectors();
 
         geocoder = new google.maps.Geocoder();
 
@@ -68,7 +89,6 @@
           rotationSlider.value = "0";
         }
         //rotationSlider.style.display = "none";
-        //rotationSlider.classList.add("button", "button-secondary");
         const sliderLabel = document.createElement("p");
         sliderLabel.id = "sliderLabel";
         sliderLabel.classList.add("button-label");
@@ -76,7 +96,7 @@
 
         const sliderContainer = document.createElement("div");
         sliderContainer.id = "sliderContainer";
-        sliderContainer.classList.add("vertical-container");
+        sliderContainer.classList.add("slider-container");
         sliderContainer.appendChild(sliderLabel);
         sliderContainer.appendChild(rotationSlider);
 
@@ -110,8 +130,21 @@
         topRightHContainer.appendChild(dropdown);
         topRightHContainer.appendChild(saveBtn);
 
-        
+        const addFloorBtn = document.createElement("button");
+        addFloorBtn.id = "addFloorBtn";
+        addFloorBtn.textContent = "Add Floor +";
+        addFloorBtn.style.display = "inline-block";
+        addFloorBtn.style.whiteSpace = "nowrap";
+        addFloorBtn.style.color = "white";
+        addFloorBtn.style.fontSize = "18px";
+        addFloorBtn.style.backgroundColor = "orange";
+        addFloorBtn.style.marginLeft = "10px";
+        addFloorBtn.style.marginTop = "10px";
+        addFloorBtn.style.padding = "10px";
+        addFloorBtn.style.border = "1px solid black"
+        addFloorBtn.style.borderRadius = "6px";
 
+        map.controls[google.maps.ControlPosition.LEFT_TOP].push(addFloorBtn);
         map.controls[google.maps.ControlPosition.TOP_RIGHT].push(topRightHContainer);
         map.controls[google.maps.ControlPosition.TOP_LEFT].push(inputAddress);
         map.controls[google.maps.ControlPosition.TOP_LEFT].push(searchButton);
@@ -122,6 +155,9 @@
         mapOnCLickListener = map.addListener("click", (e) => {
           floorplanCoordinates = e.latLng;
           map.setCenter(floorplanCoordinates);
+          togglePopup();
+        });
+        addFloorBtn.addEventListener("click", (e) => {
           togglePopup();
         });
         rotationSlider.addEventListener('input', (event) => {
@@ -144,14 +180,35 @@
           event.preventDefault();
 
           const formData = new FormData(this);
+          let groundFloorRotation = 0; //not set
+          let groundFloorCorners;
+          if(floorplanCoordinates) {
+            // The distance from the center to the corners (in degrees)
+            const latOffset = 0.00000897 * 25;
+            const lngOffset = 0.00000897 * 50;
+            groundFloorCorners = {
+              northEast: {lat: floorplanCoordinates.lat() + latOffset, lng: floorplanCoordinates.lng() + lngOffset}, // northEast
+              southWest: {lat: floorplanCoordinates.lat() - latOffset, lng: floorplanCoordinates.lng() - lngOffset}  // southWest
+            };
+          }
+          if(!floorplanCoordinates && allFloorplans[0]) {
+            floorplanCoordinates = allFloorplans[0].center;
+            groundFloorRotation = allFloorplans[0].rotation;
+            groundFloorCorners = allFloorplans[0].corners;
+          }
           formData.append('center', JSON.stringify(floorplanCoordinates));
-          formData.append('rotation', imageOverlay.rotation);
+          console.log(JSON.stringify(floorplanCoordinates));
+          formData.append('rotation', groundFloorRotation);
+          console.log(groundFloorRotation);
           formData.append('corners', JSON.stringify({
-            northEast: cornerMarkers.northEast.getPosition().toJSON(),
-            southWest: cornerMarkers.southWest.getPosition().toJSON()
+            northEast: { lat: groundFloorCorners.northEast.lat, lng: groundFloorCorners.northEast.lng },
+            southWest: { lat: groundFloorCorners.southWest.lat, lng: groundFloorCorners.southWest.lng }
+          }));
+          console.log(JSON.stringify({
+            northEast: { lat: groundFloorCorners.northEast.lat, lng: groundFloorCorners.northEast.lng },
+            southWest: { lat: groundFloorCorners.southWest.lat, lng: groundFloorCorners.southWest.lng }
           }));
           floorplanCoordinates = null;
-
 
           const response = await fetch('/api/floorPlans', {
             method: 'POST',
@@ -162,6 +219,11 @@
             togglePopup();
             google.maps.event.removeListener(mapOnCLickListener);
             mapOnCLickListener = null;
+            searchButton.style.display = "none";
+            inputAddress.style.display = "none";
+            await loadFloors();
+            displayFloorPlan(formData.get("order"));
+            createFloorSelectors();
             alert('Floor plan created successfully');
 
             // Optionally, refresh the page or update the UI with the new floor plan
@@ -169,6 +231,12 @@
             alert('Failed to create floor plan');
           }
         });
+        if(allFloorplans){
+          if (allFloorplans.length > 0) {
+            searchButton.style.display = "none";
+            inputAddress.style.display = "none";
+          }
+        }
       }
       function geocode(request) {
         geocoder.geocode(request, (results, status) => {
@@ -179,30 +247,72 @@
           }
         });
       }
+      function createFloorSelectors() {
+        if(!allFloorplans) {
+          return;
+        }
+        let floorSelectContainer = document.createElement('div');
+        floorSelectContainer.id = "floorSelectContainer";
+        floorSelectContainer.classList.add("vertical-container");
+        let floorSelectors = new Map();
+        allFloorplans.forEach(function(floor) {
+          let btn = document.createElement('button');
+          console.log(floor.name, floor.order);
+          btn.textContent = floor.name;
+          btn.label = floor.name;
+          btn.style.display = "inline-block";
+          btn.style.whiteSpace = "nowrap";
+          btn.style.color = "#0cfabf";
+          btn.style.fontSize = "18px";
+          btn.style.backgroundColor = "black";
+          btn.style.marginRight = "10px";
+          btn.style.padding = "10px";
+          btn.style.border = "1px solid #0cfabf"
+          btn.style.borderRadius = "6px";
+          floorSelectors.set(floor.order, btn);
+          //floorSelectContainer.appendChild(btn);
+          map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(btn);
+          btn.addEventListener('click', function() {
+            displayFloorPlan(floor.order);
+            console.log(btn.label + ' button clicked');
+          });
+        });
 
-      async function loadFloorPlan() {
+      }
+      async function loadFloors() {
         const response = await fetch('/api/floorPlans');
         const floorPlans = await response.json();
-        console.log(floorPlans);
         floorPlans.sort((a, b) => a.order - b.order);
-        let center = floorPlans[0].center;
-        currentFloorPlanOrder = floorPlans[0].order;
-        console.log("currentFloorPlanOrder", currentFloorPlanOrder);
-        if (center) {
-          map = new google.maps.Map(document.getElementById("map"), {
-            zoom: 20,
-            center: center,
-            disableDefaultUI: true,
-          });
-        } else {
-          map = new google.maps.Map(document.getElementById("map"), {
-            zoom: 19,
-            center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
-            disableDefaultUI: true,
-          });
+        allFloorplans = floorPlans;
+      }
+
+      function displayFloorPlan(floorNum) {
+        if(allFloorplans.length < 1) {
+          console.log("Error: There are no floors");
+          return;
         }
+        console.log("allFroorplans",allFloorplans);
+        let alreadyExists = false;
+        if (overlays && overlays.length > 0) {
+          for(const overlay of overlays) {
+            if (overlay.floorNum === floorNum) {
+              alreadyExists = true;
+              imageOverlay = overlay;
+              overlay.setIsVisible(true);
+              overlay.markers.northEast.setMap(map);
+              overlay.markers.southWest.setMap(map);
+
+            } else {
+              overlay.setIsVisible(false);
+              overlay.markers.northEast.setMap(null);
+              overlay.markers.southWest.setMap(null);
+            }
+          }
+        }
+        let center = allFloorplans[floorNum].center;
+        currentFloorPlanOrder = floorNum;
         class CustomImageOverlay extends google.maps.OverlayView {
-          constructor(imageUrl, corners, map, rotation) {
+          constructor(imageUrl, corners, map, rotation, floorNum, markers) {
             super();
             this.imageUrl = imageUrl;
             this.corners = corners; // An array of LatLng objects [northEast, northWest, southEast, southWest]
@@ -210,6 +320,9 @@
             this.div = null;
             this.rotation = rotation || 0; // Rotation angle in degrees
             this.setMap(map);
+            this.floorNum = floorNum;
+            this.markers = markers;
+            this.visible = true;
           }
 
           onAdd() {
@@ -233,6 +346,12 @@
           }
 
           draw() {
+            if (!this.visible) {
+              this.div.style.display = 'none';
+              return;
+            }
+
+            this.div.style.display = 'block';
             const overlayProjection = this.getProjection();
 
             const ne = overlayProjection.fromLatLngToDivPixel(this.corners.northEast);
@@ -262,28 +381,16 @@
             this.rotation = angle;
             this.draw();
           }
+          setIsVisible(val) {
+            this.visible = val;
+            this.draw();
+          }
         }
         //############################
-
-        // Define the distance from the center to the corners (in degrees)
-        const latOffset = 0.000278; // Approximately 31 meters north/south
-        const lngOffset = 0.000278; // Approximately 31 meters east/west
-
-        console.log(center);
-        // Calculate the initial corners based on the center coordinate
-        let corners;
-        if(!floorPlans[0].corners) {
-          corners = {
-            northEast: {lat: center.lat + latOffset, lng: center.lng + lngOffset}, // northEast
-            //northWest: {lat: center.lat + latOffset, lng: center.lng - lngOffset}, // northWest
-            //southEast: {lat: center.lat - latOffset, lng: center.lng + lngOffset}, // southEast
-            southWest: {lat: center.lat - latOffset, lng: center.lng - lngOffset}  // southWest
-          };
-        } else {
-          corners = floorPlans[0].corners;
-        }
-          imageOverlay = new CustomImageOverlay(floorPlans[0].img, corners, map, floorPlans[0].rotation);
-
+        if (!alreadyExists) {
+          // Calculate the initial corners based on the center coordinate
+          let corners;
+          corners = allFloorplans[floorNum].corners;
           cornerMarkers = {
             northEast: new google.maps.Marker({
               position: corners.northEast,
@@ -298,6 +405,8 @@
               title: "South-West Corner"
             }),
           };
+          imageOverlay = new CustomImageOverlay(allFloorplans[floorNum].img, corners, map, allFloorplans[floorNum].rotation, floorNum, cornerMarkers);
+          overlays[floorNum] = imageOverlay;
 
           function updateCorners() {
             corners.northEast = cornerMarkers.northEast.getPosition();
@@ -308,6 +417,7 @@
           for (let key in cornerMarkers) {
             cornerMarkers[key].addListener('drag', updateCorners);
           }
+        }
       }
       function startNewPolyline() {
         currentPolyline = new google.maps.Polyline({
@@ -540,7 +650,7 @@
 
           if (response.ok) {
             alert('Floor plan updated successfully');
-            //await loadFloorPlans(); // Optionally, refresh the page or update the UI with the new floor plan
+            //await displayFloorPlans(); // Optionally, refresh the page or update the UI with the new floor plan
           } else {
             alert('Failed to update floor plan');
           }
@@ -735,7 +845,7 @@
         border-radius: 10px;
         width: 400px; /* Set width to 400px */
       }
-      .vertical-container {
+      .slider-container {
         display: flex;
         flex-direction: column;
         margin-top: 10px;
@@ -747,6 +857,13 @@
         box-shadow: none; /* Remove shadow for a flatter look */
         font-style: italic;
         opacity: 70%;
+      }
+      .vertical-container {
+        display: flex;
+        flex-direction: column;
+        margin-right: 10px;
+        padding: 10px;
+        align-items: center;
       }
       .horizontal-container {
         display: flex;
@@ -769,6 +886,17 @@
         font-size: 20px;
         cursor: pointer;
         color: #333;
+      }
+      .floorSelector-button {
+        width: 10px;
+        height: 10px;
+        background-color: white;
+        border: 1px solid #ccc;
+        padding: 10px;
+        cursor: pointer;
+        text-align: center;
+        border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
       }
 
       .popup h2 {

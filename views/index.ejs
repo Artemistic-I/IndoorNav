@@ -19,7 +19,7 @@
       let allFloorplans;
       let cornerMarkers;
       let polylines = [];
-      let overlays = [];
+      let overlays = new Map();
       let markerPairs = [];
       let favColor = "#0cfabf";
       let currentPolyline;
@@ -197,14 +197,8 @@
             groundFloorCorners = allFloorplans[0].corners;
           }
           formData.append('center', JSON.stringify(floorplanCoordinates));
-          console.log(JSON.stringify(floorplanCoordinates));
           formData.append('rotation', groundFloorRotation);
-          console.log(groundFloorRotation);
           formData.append('corners', JSON.stringify({
-            northEast: { lat: groundFloorCorners.northEast.lat, lng: groundFloorCorners.northEast.lng },
-            southWest: { lat: groundFloorCorners.southWest.lat, lng: groundFloorCorners.southWest.lng }
-          }));
-          console.log(JSON.stringify({
             northEast: { lat: groundFloorCorners.northEast.lat, lng: groundFloorCorners.northEast.lng },
             southWest: { lat: groundFloorCorners.southWest.lat, lng: groundFloorCorners.southWest.lng }
           }));
@@ -254,27 +248,27 @@
         let floorSelectContainer = document.createElement('div');
         floorSelectContainer.id = "floorSelectContainer";
         floorSelectContainer.classList.add("vertical-container");
+        floorSelectContainer.style.gap = "5px";
         let floorSelectors = new Map();
         allFloorplans.forEach(function(floor) {
           let btn = document.createElement('button');
-          console.log(floor.name, floor.order);
           btn.textContent = floor.name;
           btn.label = floor.name;
           btn.style.display = "inline-block";
           btn.style.whiteSpace = "nowrap";
-          btn.style.color = "#0cfabf";
+          btn.style.color = "black";
           btn.style.fontSize = "18px";
-          btn.style.backgroundColor = "black";
+          btn.style.backgroundColor = "white";
           btn.style.marginRight = "10px";
+          btn.style.marginTop = "10px";
           btn.style.padding = "10px";
-          btn.style.border = "1px solid #0cfabf"
+          btn.style.border = "1px solid #007bff"
           btn.style.borderRadius = "6px";
           floorSelectors.set(floor.order, btn);
           //floorSelectContainer.appendChild(btn);
           map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(btn);
           btn.addEventListener('click', function() {
             displayFloorPlan(floor.order);
-            console.log(btn.label + ' button clicked');
           });
         });
 
@@ -288,14 +282,13 @@
 
       function displayFloorPlan(floorNum) {
         if(allFloorplans.length < 1) {
-          console.log("Error: There are no floors");
+          console.log("There are no floors");
           return;
         }
-        console.log("allFroorplans",allFloorplans);
         let alreadyExists = false;
-        if (overlays && overlays.length > 0) {
-          for(const overlay of overlays) {
-            if (overlay.floorNum === floorNum) {
+        if (overlays) {
+          for(const overlay of overlays.values()) {
+            if (overlay.floorOrder === floorNum) {
               alreadyExists = true;
               imageOverlay = overlay;
               overlay.setIsVisible(true);
@@ -320,7 +313,7 @@
             this.div = null;
             this.rotation = rotation || 0; // Rotation angle in degrees
             this.setMap(map);
-            this.floorNum = floorNum;
+            this.floorOrder = floorNum;
             this.markers = markers;
             this.visible = true;
           }
@@ -406,7 +399,7 @@
             }),
           };
           imageOverlay = new CustomImageOverlay(allFloorplans[floorNum].img, corners, map, allFloorplans[floorNum].rotation, floorNum, cornerMarkers);
-          overlays[floorNum] = imageOverlay;
+          overlays.set(floorNum, imageOverlay);
 
           function updateCorners() {
             corners.northEast = cornerMarkers.northEast.getPosition();
@@ -638,7 +631,6 @@
               southWest: { lat: cornerMarkers.southWest.getPosition().lat(), lng: cornerMarkers.southWest.getPosition().lng() }
             })
           };
-          console.log(cornerMarkers.northEast.getPosition().toJSON());
 
           const response = await fetch(`/api/floorPlans/order/${currentFloorPlanOrder}`, {
             method: 'PUT',
@@ -862,6 +854,7 @@
         display: flex;
         flex-direction: column;
         margin-right: 10px;
+        gap: 5px;
         padding: 10px;
         align-items: center;
       }

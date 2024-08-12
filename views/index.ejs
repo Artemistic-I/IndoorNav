@@ -6,7 +6,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <script
-            src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFRCi9RiQ6jNMjspjXa6wVSVH7rbBnIGc&callback=initMap&v=weekly"
+            src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFRCi9RiQ6jNMjspjXa6wVSVH7rbBnIGc&libraries=geometry&callback=initMap&v=weekly"
             defer
     ></script>
     <script>
@@ -23,9 +23,10 @@
       let markerPairs = [];
       let favColor = "#0cfabf";
       let currentPolyline;
-      const toleranceRadius = 3; //snap to point radius
+      let selectedValueDropdown;
+      const toleranceRadius = 1; //snap to point radius
       let highlightedVertexIndex = null; //next line will be drawn from this vetrtex
-      let currentFloorPlanOrder;
+      let currentFloorNum;
       const FloorPlanOptions = {
         FLOORS: 'Floors',
         POINTS_OF_INTEREST: 'Points of interest',
@@ -47,17 +48,33 @@
             center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
             disableDefaultUI: true,
           });
+          mapOnCLickListener = map.addListener("click", (e) => {
+            floorplanCoordinates = e.latLng;
+            map.setCenter(floorplanCoordinates);
+            togglePopup();
+          });
         }
         displayFloorPlan(0);
 
-        // Create the button.
-        const saveBtn = createSaveBtn(map);
-        saveBtn.classList.add("button", "button-primary");
-        saveBtn.style.padding = "10px";
-        saveBtn.style.borderRadius = "4px";
-        saveBtn.style.fontSize = "18px";
-        saveBtn.style.backgroundColor = "orange";
-        saveBtn.style.border = "1px solid black"
+        const saveFloorBtn = createSaveBtn(map);
+        saveFloorBtn.classList.add("button", "button-primary");
+        saveFloorBtn.style.padding = "10px";
+        saveFloorBtn.style.borderRadius = "4px";
+        saveFloorBtn.style.fontSize = "18px";
+        saveFloorBtn.style.backgroundColor = "orange";
+        saveFloorBtn.style.border = "1px solid black"
+
+        const savePathBtn = document.createElement("button");
+        savePathBtn.type = "button";
+        savePathBtn.textContent = "Save paths";
+        savePathBtn.style.color = "black";
+        savePathBtn.style.padding = "10px";
+        savePathBtn.style.borderRadius = "4px";
+        savePathBtn.style.marginTop = "20px";
+        savePathBtn.style.fontSize = "18px";
+        savePathBtn.style.backgroundColor = favColor;
+        savePathBtn.style.border = "1px solid black"
+        savePathBtn.style.display = "none";
 
         await loadPolylines();
         createFloorSelectors();
@@ -128,7 +145,8 @@
         topRightHContainer.id = "topRightHContainer";
         topRightHContainer.classList.add("horizontal-container");
         topRightHContainer.appendChild(dropdown);
-        topRightHContainer.appendChild(saveBtn);
+        topRightHContainer.appendChild(saveFloorBtn);
+        //topRightHContainer.appendChild(savePathBtn);
 
         const addFloorBtn = document.createElement("button");
         addFloorBtn.id = "addFloorBtn";
@@ -146,23 +164,60 @@
 
         map.controls[google.maps.ControlPosition.LEFT_TOP].push(addFloorBtn);
         map.controls[google.maps.ControlPosition.TOP_RIGHT].push(topRightHContainer);
+        map.controls[google.maps.ControlPosition.TOP_CENTER].push(savePathBtn);
         map.controls[google.maps.ControlPosition.TOP_LEFT].push(inputAddress);
         map.controls[google.maps.ControlPosition.TOP_LEFT].push(searchButton);
         map.controls[google.maps.ControlPosition.TOP_CENTER].push(sliderContainer);
         map.controls[google.maps.ControlPosition.LEFT_TOP].push(instructionsElement);
         map.controls[google.maps.ControlPosition.TOP_RIGHT].push(dropdown);
 
-        mapOnCLickListener = map.addListener("click", (e) => {
-          floorplanCoordinates = e.latLng;
-          map.setCenter(floorplanCoordinates);
-          togglePopup();
-        });
+
         addFloorBtn.addEventListener("click", (e) => {
           togglePopup();
+        });
+        savePathBtn.addEventListener('click', (e) => {
+          overwriteOldPolylines();
         });
         rotationSlider.addEventListener('input', (event) => {
           const angle = parseInt(event.target.value, 10);
           imageOverlay.setRotation(angle);
+        });
+        dropdown.addEventListener('change', function(event) {
+          selectedValueDropdown = event.target.value;
+          console.log('Selected value:', selectedValueDropdown);
+
+          if (selectedValueDropdown === FloorPlanOptions.FLOORS) {
+            sliderContainer.style.display = "block";
+            saveFloorBtn.style.display = "block";
+            savePathBtn.style.display = "none";
+            addFloorBtn.style.display = "block";
+            for (const overlay of overlays.values()) {
+              overlay.img.style.opacity = "50%";
+              overlay.markers.northEast.setMap(map);
+              overlay.markers.southWest.setMap(map);
+            }
+            google.maps.event.removeListener(mapOnCLickListener);
+            mapOnCLickListener = null;
+          } else if (selectedValueDropdown === FloorPlanOptions.POINTS_OF_INTEREST) {
+            // Handle the "POINTS_OF_INTEREST" option
+          } else if (selectedValueDropdown === FloorPlanOptions.PATHS) {
+            sliderContainer.style.display = "none";
+            saveFloorBtn.style.display = "none";
+            savePathBtn.style.display = "inline-block";
+            addFloorBtn.style.display = "none";
+            for (const overlay of overlays.values()) {
+              overlay.markers.northEast.setMap(null);
+              overlay.markers.southWest.setMap(null);
+              overlay.img.style.opacity = "100%";
+            }
+            mapOnCLickListener = map.addListener("click", (event) => {
+              if (!currentPolyline) {
+                startNewPolyline();
+              }
+              addLatLng(event);
+              highlightVertex(event);
+            });
+          }
         });
 
         searchButton.addEventListener("click", () => {
@@ -269,6 +324,12 @@
           map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(btn);
           btn.addEventListener('click', function() {
             displayFloorPlan(floor.order);
+            if (selectedValueDropdown === FloorPlanOptions.PATHS) {
+              for (const overlay of overlays.values()) {
+                overlay.markers.northEast.setMap(null);
+                overlay.markers.southWest.setMap(null);
+              }
+            }
           });
         });
 
@@ -303,7 +364,7 @@
           }
         }
         let center = allFloorplans[floorNum].center;
-        currentFloorPlanOrder = floorNum;
+        currentFloorNum = floorNum;
         class CustomImageOverlay extends google.maps.OverlayView {
           constructor(imageUrl, corners, map, rotation, floorNum, markers) {
             super();
@@ -330,7 +391,11 @@
             img.style.height = '100%';
             img.style.position = 'absolute';
             img.style.transformOrigin = 'center';
-            img.style.opacity = '0.5';
+            if (selectedValueDropdown === FloorPlanOptions.PATHS) {
+              img.style.opacity = '1';
+            } else {
+              img.style.opacity = '0.5';
+            }
             this.img = img;
             this.div.appendChild(img);
 
@@ -435,7 +500,7 @@
           if (e.vertex == undefined) {
             return;
           }
-          console.log(polyline.getPath().getAt(e.vertex));
+          //console.log(polyline.getPath().getAt(e.vertex));
           completeCurrentPolyline();
           startNewPolyline();
           addLatLng(e);
@@ -480,7 +545,7 @@
 
             const menu = this;
 
-            google.maps.event.addDomListener(this.div_, "click", (event) => {
+            this.div_.addEventListener("click", (event) => {
               event.stopPropagation();
               menu.removeVertex();
             });
@@ -492,8 +557,7 @@
             this.getPanes().floatPane.appendChild(this.div_);
             // mousedown anywhere on the map except on the menu div will close the
             // menu.
-            this.divListener_ = google.maps.event.addDomListener(
-                    map.getDiv(),
+            this.divListener_ = map.getDiv().addEventListener(
                     "mousedown",
                     (e) => {
                       if (e.target != deleteMenu.div_) {
@@ -614,12 +678,11 @@
         const controlButton = document.createElement("button");
 
         controlButton.textContent = "Save";
-        controlButton.title = "Click to save the paths";
+        controlButton.title = "Click to save the floorplan";
         controlButton.type = "button";
-        // Setup the click event listeners: simply set the map to Chicago.
         controlButton.addEventListener("click", async () => {
           //overwriteOldPolylines();
-          if (currentFloorPlanOrder === null || currentFloorPlanOrder === undefined) {
+          if (currentFloorNum === null || currentFloorNum === undefined) {
             alert('No floor plan selected');
             return;
           }
@@ -632,7 +695,7 @@
             })
           };
 
-          const response = await fetch(`/api/floorPlans/order/${currentFloorPlanOrder}`, {
+          const response = await fetch(`/api/floorPlans/order/${currentFloorNum}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json'
@@ -642,7 +705,6 @@
 
           if (response.ok) {
             alert('Floor plan updated successfully');
-            //await displayFloorPlans(); // Optionally, refresh the page or update the UI with the new floor plan
           } else {
             alert('Failed to update floor plan');
           }
@@ -677,6 +739,7 @@
       async function loadPolylines() {
         const response = await fetch('/api/polylines');
         const polylinesData = await response.json();
+        console.log(polylinesData);
 
         polylinesData.forEach(data => {
           const polyline = new google.maps.Polyline({

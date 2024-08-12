@@ -500,11 +500,11 @@
           if (e.vertex == undefined) {
             return;
           }
-          //console.log(polyline.getPath().getAt(e.vertex));
-          completeCurrentPolyline();
-          startNewPolyline();
-          addLatLng(e);
-          highlightVertex(e);
+          console.log(JSON.stringify(polyline.getPath().getAt(e.vertex)));
+          // completeCurrentPolyline();
+          // startNewPolyline();
+          // addLatLng(e);
+          // highlightVertex(e);
         });
       }
 
@@ -739,7 +739,16 @@
       async function loadPolylines() {
         const response = await fetch('/api/polylines');
         const polylinesData = await response.json();
-        console.log(polylinesData);
+
+        const graph = buildGraph(polylinesData);
+        const startNode = "53.38126924013136,-1.4804716755088942"; // starting point
+        const endNode = "53.38128602983781,-1.4802810969644087"; // ending point
+
+        const path = shortestPath(graph, startNode, endNode);
+
+        console.log("Shortest Path:", path);
+
+
 
         polylinesData.forEach(data => {
           const polyline = new google.maps.Polyline({
@@ -760,6 +769,7 @@
           attachDeleteMenuListener(polyline);
           attachVertexClickListener(polyline);
         });
+        drawShortestPath(path);
       }
       async function overwriteOldPolylines() {
         const response = await fetch('/api/polylines', {
@@ -779,6 +789,117 @@
       function togglePopup() {
         const popup = document.getElementById("popup");
         popup.style.display = popup.style.display === "none" || popup.style.display === "" ? "block" : "none";
+      }
+      function buildGraph(polylinesData) {
+        const graph = {};
+
+        polylinesData.forEach((polyline, polylineIndex) => {
+          polyline.path.forEach((point, index) => {
+            const pointKey = `${point.lat},${point.lng}`;
+
+            // Initialize graph node if it doesn't exist
+            if (!graph[pointKey]) {
+              graph[pointKey] = [];
+            }
+
+            // Connect to the previous point
+            if (index > 0) {
+              const prevPoint = polyline.path[index - 1];
+              const prevPointKey = `${prevPoint.lat},${prevPoint.lng}`;
+              const distance = google.maps.geometry.spherical.computeDistanceBetween(
+                      new google.maps.LatLng(prevPoint.lat, prevPoint.lng),
+                      new google.maps.LatLng(point.lat, point.lng)
+              );
+
+              // Add bidirectional edges
+              graph[pointKey].push({ node: prevPointKey, weight: distance });
+              graph[prevPointKey].push({ node: pointKey, weight: distance });
+            }
+          });
+        });
+
+        return graph;
+      }
+      function dijkstra(graph, startNode) {
+        const distances = {};
+        const previous = {};
+        const pq = new PriorityQueue((a, b) => distances[a] < distances[b]);
+
+        // Initialize distances and priority queue
+        for (let node in graph) {
+          if (node === startNode) {
+            distances[node] = 0;
+            pq.enqueue(node);
+          } else {
+            distances[node] = Infinity;
+          }
+          previous[node] = null;
+        }
+
+        while (!pq.isEmpty()) {
+          const currentNode = pq.dequeue();
+
+          graph[currentNode].forEach(neighbor => {
+            const distance = distances[currentNode] + neighbor.weight;
+
+            if (distance < distances[neighbor.node]) {
+              distances[neighbor.node] = distance;
+              previous[neighbor.node] = currentNode;
+              pq.enqueue(neighbor.node);
+            }
+          });
+        }
+
+        return { distances, previous };
+      }
+
+      // Priority Queue implementation
+      class PriorityQueue {
+        constructor(comparator) {
+          this._data = [];
+          this._comparator = comparator;
+        }
+
+        enqueue(item) {
+          this._data.push(item);
+          this._data.sort(this._comparator);
+        }
+
+        dequeue() {
+          return this._data.shift();
+        }
+
+        isEmpty() {
+          return this._data.length === 0;
+        }
+      }
+      function shortestPath(graph, startNode, endNode) {
+        const { distances, previous } = dijkstra(graph, startNode);
+        console.log(dijkstra(graph, startNode));
+        let path = [];
+        let currentNode = endNode;
+
+        while (currentNode !== null) {
+          path.push(currentNode);
+          currentNode = previous[currentNode];
+        }
+
+        return path.reverse();
+      }
+      function drawShortestPath(path) {
+        const pathCoordinates = path.map(point => {
+          const [lat, lng] = point.split(',');
+          return { lat: parseFloat(lat), lng: parseFloat(lng) };
+        });
+
+        new google.maps.Polyline({
+          path: pathCoordinates,
+          geodesic: true,
+          strokeColor: "#FF0000",
+          strokeOpacity: 1.0,
+          strokeWeight: 3,
+          map: map
+        });
       }
 
       window.initMap = initMap;

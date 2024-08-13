@@ -9,901 +9,6 @@
             src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFRCi9RiQ6jNMjspjXa6wVSVH7rbBnIGc&libraries=geometry&callback=initMap&v=weekly"
             defer
     ></script>
-    <script>
-        //let poly;
-        let map;
-        let mapOnCLickListener;
-        let geocoder;
-        let imageOverlay;
-        let floorplanCoordinates;
-        let allFloorplans;
-        let cornerMarkers;
-        let polylines = [];
-        let overlays = new Map();
-        let markerPairs = [];
-        let favColor = "#0cfabf";
-        let currentPolyline;
-        let selectedValueDropdown;
-        const toleranceRadius = 1; //snap to point radius
-        let highlightedVertexIndex = null; //next line will be drawn from this vetrtex
-        let currentFloorNum;
-        const FloorPlanOptions = {
-            FLOORS: 'Floors',
-            POINTS_OF_INTEREST: 'Points of interest',
-            PATHS: 'Paths'
-        };
-
-        async function initMap() {
-            await loadFloors();
-            if (allFloorplans && allFloorplans.length > 0) {
-                center = allFloorplans[0].center;
-                map = new google.maps.Map(document.getElementById("map"), {
-                    zoom: 20,
-                    center: center,
-                    disableDefaultUI: true,
-                });
-            } else {
-                map = new google.maps.Map(document.getElementById("map"), {
-                    zoom: 19,
-                    center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
-                    disableDefaultUI: true,
-                });
-                mapOnCLickListener = map.addListener("click", (e) => {
-                    floorplanCoordinates = e.latLng;
-                    map.setCenter(floorplanCoordinates);
-                    togglePopup();
-                });
-            }
-            displayFloorPlan(0);
-
-            const saveFloorBtn = createSaveBtn(map);
-            saveFloorBtn.classList.add("button", "button-primary");
-            saveFloorBtn.style.padding = "10px";
-            saveFloorBtn.style.borderRadius = "4px";
-            saveFloorBtn.style.fontSize = "18px";
-            saveFloorBtn.style.backgroundColor = "orange";
-            saveFloorBtn.style.border = "1px solid black"
-
-            const savePathBtn = document.createElement("button");
-            savePathBtn.type = "button";
-            savePathBtn.textContent = "Save paths";
-            savePathBtn.style.color = "black";
-            savePathBtn.style.padding = "10px";
-            savePathBtn.style.borderRadius = "4px";
-            savePathBtn.style.marginTop = "20px";
-            savePathBtn.style.fontSize = "18px";
-            savePathBtn.style.backgroundColor = favColor;
-            savePathBtn.style.border = "1px solid black"
-            savePathBtn.style.display = "none";
-
-            await loadPolylines();
-            createFloorSelectors();
-
-            geocoder = new google.maps.Geocoder();
-
-            const inputAddress = document.createElement("input");
-
-            inputAddress.type = "text";
-            inputAddress.placeholder = "Enter a postcode";
-            inputAddress.id = "inputAddress";
-
-            const searchButton = document.createElement("input");
-
-            searchButton.type = "button";
-            searchButton.value = "Search";
-            searchButton.id = "searchButton";
-            searchButton.classList.add("button", "button-primary");
-
-            const rotationSlider = document.createElement("input");
-            rotationSlider.type = "range";
-            rotationSlider.id = "rotationSlider";
-            rotationSlider.min = "-180";
-            rotationSlider.max = "180";
-            rotationSlider.step = "1";
-            if (imageOverlay) {
-                rotationSlider.value = imageOverlay.rotation;
-            } else {
-                rotationSlider.value = "0";
-            }
-            //rotationSlider.style.display = "none";
-            const sliderLabel = document.createElement("p");
-            sliderLabel.id = "sliderLabel";
-            sliderLabel.classList.add("button-label");
-            sliderLabel.innerHTML = "Adjust rotation";
-
-            const sliderContainer = document.createElement("div");
-            sliderContainer.id = "sliderContainer";
-            sliderContainer.classList.add("slider-container");
-            sliderContainer.appendChild(sliderLabel);
-            sliderContainer.appendChild(rotationSlider);
-
-            const instructionsElement = document.createElement("p");
-            instructionsElement.id = "instructions";
-            instructionsElement.innerHTML =
-                "<strong>Tip</strong>: Click on the map to select the exact location of the bulding";
-
-            const dropdown = document.createElement('select');
-            dropdown.id = 'editModeDropdown';
-            dropdown.style.marginTop = "20px";
-            dropdown.style.paddingLeft = "10px";
-            dropdown.style.fontSize = "18px"
-            // Step 3: Add options to the dropdown menu
-            const options = [
-                { value: FloorPlanOptions.FLOORS},
-                { value: FloorPlanOptions.POINTS_OF_INTEREST},
-                { value: FloorPlanOptions.PATHS},
-            ];
-
-            options.forEach(optionData => {
-                const option = document.createElement('option');
-                option.value = optionData.value;
-                option.text = optionData.value;
-                dropdown.appendChild(option);
-            });
-
-            const topRightHContainer = document.createElement("div");
-            topRightHContainer.id = "topRightHContainer";
-            topRightHContainer.classList.add("horizontal-container");
-            topRightHContainer.appendChild(dropdown);
-            topRightHContainer.appendChild(saveFloorBtn);
-            //topRightHContainer.appendChild(savePathBtn);
-
-            const addFloorBtn = document.createElement("button");
-            addFloorBtn.id = "addFloorBtn";
-            addFloorBtn.textContent = "Add Floor +";
-            addFloorBtn.style.display = "inline-block";
-            addFloorBtn.style.whiteSpace = "nowrap";
-            addFloorBtn.style.color = "white";
-            addFloorBtn.style.fontSize = "18px";
-            addFloorBtn.style.backgroundColor = "orange";
-            addFloorBtn.style.marginLeft = "10px";
-            addFloorBtn.style.marginTop = "10px";
-            addFloorBtn.style.padding = "10px";
-            addFloorBtn.style.border = "1px solid black"
-            addFloorBtn.style.borderRadius = "6px";
-
-            map.controls[google.maps.ControlPosition.LEFT_TOP].push(addFloorBtn);
-            map.controls[google.maps.ControlPosition.TOP_RIGHT].push(topRightHContainer);
-            map.controls[google.maps.ControlPosition.TOP_CENTER].push(savePathBtn);
-            map.controls[google.maps.ControlPosition.TOP_LEFT].push(inputAddress);
-            map.controls[google.maps.ControlPosition.TOP_LEFT].push(searchButton);
-            map.controls[google.maps.ControlPosition.TOP_CENTER].push(sliderContainer);
-            map.controls[google.maps.ControlPosition.LEFT_TOP].push(instructionsElement);
-            map.controls[google.maps.ControlPosition.TOP_RIGHT].push(dropdown);
-
-
-            addFloorBtn.addEventListener("click", (e) => {
-                togglePopup();
-            });
-            savePathBtn.addEventListener('click', (e) => {
-                overwriteOldPolylines();
-            });
-            rotationSlider.addEventListener('input', (event) => {
-                const angle = parseInt(event.target.value, 10);
-                imageOverlay.setRotation(angle);
-            });
-            dropdown.addEventListener('change', function(event) {
-                selectedValueDropdown = event.target.value;
-                console.log('Selected value:', selectedValueDropdown);
-
-                if (selectedValueDropdown === FloorPlanOptions.FLOORS) {
-                    sliderContainer.style.display = "block";
-                    saveFloorBtn.style.display = "block";
-                    savePathBtn.style.display = "none";
-                    addFloorBtn.style.display = "block";
-                    for (const overlay of overlays.values()) {
-                        overlay.img.style.opacity = "50%";
-                        overlay.markers.northEast.setMap(map);
-                        overlay.markers.southWest.setMap(map);
-                    }
-                    google.maps.event.removeListener(mapOnCLickListener);
-                    mapOnCLickListener = null;
-                } else if (selectedValueDropdown === FloorPlanOptions.POINTS_OF_INTEREST) {
-                    // Handle the "POINTS_OF_INTEREST" option
-                } else if (selectedValueDropdown === FloorPlanOptions.PATHS) {
-                    sliderContainer.style.display = "none";
-                    saveFloorBtn.style.display = "none";
-                    savePathBtn.style.display = "inline-block";
-                    addFloorBtn.style.display = "none";
-                    for (const overlay of overlays.values()) {
-                        overlay.markers.northEast.setMap(null);
-                        overlay.markers.southWest.setMap(null);
-                        overlay.img.style.opacity = "100%";
-                    }
-                    mapOnCLickListener = map.addListener("click", (event) => {
-                        if (!currentPolyline) {
-                            startNewPolyline();
-                        }
-                        addLatLng(event);
-                        highlightVertex(event);
-                    });
-                }
-            });
-
-            searchButton.addEventListener("click", () => {
-                geocode({address: inputAddress.value});
-                document.getElementById("instructions").style.display = 'block';
-            });
-            // floorplanOverlay.addListener("click", (event) => {
-            //   if (!currentPolyline) {
-            //     startNewPolyline();
-            //   }
-            //   addLatLng(event);
-            //   highlightVertex(event);
-            // });
-            document.getElementById('floorPlanForm').addEventListener('submit', async function (event) {
-                event.preventDefault();
-
-                const formData = new FormData(this);
-                let groundFloorRotation = 0; //not set
-                let groundFloorCorners;
-                if(floorplanCoordinates) {
-                    // The distance from the center to the corners (in degrees)
-                    const latOffset = 0.00000897 * 25;
-                    const lngOffset = 0.00000897 * 50;
-                    groundFloorCorners = {
-                        northEast: {lat: floorplanCoordinates.lat() + latOffset, lng: floorplanCoordinates.lng() + lngOffset}, // northEast
-                        southWest: {lat: floorplanCoordinates.lat() - latOffset, lng: floorplanCoordinates.lng() - lngOffset}  // southWest
-                    };
-                }
-                if(!floorplanCoordinates && allFloorplans[0]) {
-                    floorplanCoordinates = allFloorplans[0].center;
-                    groundFloorRotation = allFloorplans[0].rotation;
-                    groundFloorCorners = allFloorplans[0].corners;
-                }
-                formData.append('center', JSON.stringify(floorplanCoordinates));
-                formData.append('rotation', groundFloorRotation);
-                formData.append('corners', JSON.stringify({
-                    northEast: { lat: groundFloorCorners.northEast.lat, lng: groundFloorCorners.northEast.lng },
-                    southWest: { lat: groundFloorCorners.southWest.lat, lng: groundFloorCorners.southWest.lng }
-                }));
-                floorplanCoordinates = null;
-
-                const response = await fetch('/api/floorPlans', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (response.ok) {
-                    togglePopup();
-                    google.maps.event.removeListener(mapOnCLickListener);
-                    mapOnCLickListener = null;
-                    searchButton.style.display = "none";
-                    inputAddress.style.display = "none";
-                    await loadFloors();
-                    displayFloorPlan(formData.get("order"));
-                    createFloorSelectors();
-                    alert('Floor plan created successfully');
-
-                    // Optionally, refresh the page or update the UI with the new floor plan
-                } else {
-                    alert('Failed to create floor plan');
-                }
-            });
-            if(allFloorplans){
-                if (allFloorplans.length > 0) {
-                    searchButton.style.display = "none";
-                    inputAddress.style.display = "none";
-                }
-            }
-        }
-        function geocode(request) {
-            geocoder.geocode(request, (results, status) => {
-                if (status === "OK") {
-                    map.setCenter(results[0].geometry.location);
-                } else {
-                    alert("Geocode was not successful for the following reason: " + status);
-                }
-            });
-        }
-        function createFloorSelectors() {
-            if(!allFloorplans) {
-                return;
-            }
-            let floorSelectContainer = document.createElement('div');
-            floorSelectContainer.id = "floorSelectContainer";
-            floorSelectContainer.classList.add("vertical-container");
-            floorSelectContainer.style.gap = "5px";
-            let floorSelectors = new Map();
-            allFloorplans.forEach(function(floor) {
-                let btn = document.createElement('button');
-                btn.textContent = floor.name;
-                btn.label = floor.name;
-                btn.style.display = "inline-block";
-                btn.style.whiteSpace = "nowrap";
-                btn.style.color = "black";
-                btn.style.fontSize = "18px";
-                btn.style.backgroundColor = "white";
-                btn.style.marginRight = "10px";
-                btn.style.marginTop = "10px";
-                btn.style.padding = "10px";
-                btn.style.border = "1px solid #007bff"
-                btn.style.borderRadius = "6px";
-                floorSelectors.set(floor.order, btn);
-                //floorSelectContainer.appendChild(btn);
-                map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(btn);
-                btn.addEventListener('click', function() {
-                    displayFloorPlan(floor.order);
-                    if (selectedValueDropdown === FloorPlanOptions.PATHS) {
-                        for (const overlay of overlays.values()) {
-                            overlay.markers.northEast.setMap(null);
-                            overlay.markers.southWest.setMap(null);
-                        }
-                    }
-                });
-            });
-
-        }
-        async function loadFloors() {
-            const response = await fetch('/api/floorPlans');
-            const floorPlans = await response.json();
-            floorPlans.sort((a, b) => a.order - b.order);
-            allFloorplans = floorPlans;
-        }
-
-        function displayFloorPlan(floorNum) {
-            if(allFloorplans.length < 1) {
-                console.log("There are no floors");
-                return;
-            }
-            let alreadyExists = false;
-            if (overlays) {
-                for(const overlay of overlays.values()) {
-                    if (overlay.floorOrder === floorNum) {
-                        alreadyExists = true;
-                        imageOverlay = overlay;
-                        overlay.setIsVisible(true);
-                        overlay.markers.northEast.setMap(map);
-                        overlay.markers.southWest.setMap(map);
-
-                    } else {
-                        overlay.setIsVisible(false);
-                        overlay.markers.northEast.setMap(null);
-                        overlay.markers.southWest.setMap(null);
-                    }
-                }
-            }
-            let center = allFloorplans[floorNum].center;
-            currentFloorNum = floorNum;
-            class CustomImageOverlay extends google.maps.OverlayView {
-                constructor(imageUrl, corners, map, rotation, floorNum, markers) {
-                    super();
-                    this.imageUrl = imageUrl;
-                    this.corners = corners; // An array of LatLng objects [northEast, northWest, southEast, southWest]
-                    this.map = map;
-                    this.div = null;
-                    this.rotation = rotation || 0; // Rotation angle in degrees
-                    this.setMap(map);
-                    this.floorOrder = floorNum;
-                    this.markers = markers;
-                    this.visible = true;
-                }
-
-                onAdd() {
-                    this.div = document.createElement('div');
-                    this.div.style.border = 'solid #007bff';
-                    this.div.style.borderWidth = '2px';
-                    this.div.style.position = 'absolute';
-
-                    const img = document.createElement('img');
-                    img.src = this.imageUrl;
-                    img.style.width = '100%';
-                    img.style.height = '100%';
-                    img.style.position = 'absolute';
-                    img.style.transformOrigin = 'center';
-                    if (selectedValueDropdown === FloorPlanOptions.PATHS) {
-                        img.style.opacity = '1';
-                    } else {
-                        img.style.opacity = '0.5';
-                    }
-                    this.img = img;
-                    this.div.appendChild(img);
-
-                    const panes = this.getPanes();
-                    panes.overlayLayer.appendChild(this.div);
-                }
-
-                draw() {
-                    if (!this.visible) {
-                        this.div.style.display = 'none';
-                        return;
-                    }
-
-                    this.div.style.display = 'block';
-                    const overlayProjection = this.getProjection();
-
-                    const ne = overlayProjection.fromLatLngToDivPixel(this.corners.northEast);
-                    const sw = overlayProjection.fromLatLngToDivPixel(this.corners.southWest);
-
-                    const div = this.div;
-                    div.style.left = sw.x + 'px';
-                    div.style.top = ne.y + 'px';
-                    div.style.width = (ne.x - sw.x) + 'px';
-                    div.style.height = (sw.y - ne.y) + 'px';
-
-                    // Apply rotation transform
-                    this.div.style.transform = `rotate(${this.rotation}deg)`;
-                }
-
-                onRemove() {
-                    this.div.parentNode.removeChild(this.div);
-                    this.div = null;
-                }
-
-                updateCorners(corners) {
-                    this.corners = corners;
-                    this.draw();
-                }
-
-                setRotation(angle) {
-                    this.rotation = angle;
-                    this.draw();
-                }
-                setIsVisible(val) {
-                    this.visible = val;
-                    this.draw();
-                }
-            }
-            //############################
-            if (!alreadyExists) {
-                // Calculate the initial corners based on the center coordinate
-                let corners;
-                corners = allFloorplans[floorNum].corners;
-                cornerMarkers = {
-                    northEast: new google.maps.Marker({
-                        position: corners.northEast,
-                        map: map,
-                        draggable: true,
-                        title: "North-East Corner"
-                    }),
-                    southWest: new google.maps.Marker({
-                        position: corners.southWest,
-                        map: map,
-                        draggable: true,
-                        title: "South-West Corner"
-                    }),
-                };
-                imageOverlay = new CustomImageOverlay(allFloorplans[floorNum].img, corners, map, allFloorplans[floorNum].rotation, floorNum, cornerMarkers);
-                overlays.set(floorNum, imageOverlay);
-
-                function updateCorners() {
-                    corners.northEast = cornerMarkers.northEast.getPosition();
-                    corners.southWest = cornerMarkers.southWest.getPosition()
-                    imageOverlay.updateCorners(corners);
-                }
-
-                for (let key in cornerMarkers) {
-                    cornerMarkers[key].addListener('drag', updateCorners);
-                }
-            }
-        }
-        function startNewPolyline() {
-            currentPolyline = new google.maps.Polyline({
-                strokeColor: "#FF0000",
-                strokeOpacity: 1.0,
-                strokeWeight: 3,
-                editable: true,
-                draggable: true,
-                icons: []
-            });
-            currentPolyline.setMap(map);
-            polylines.push(currentPolyline);
-
-            const path = currentPolyline.getPath();
-            google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
-            google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
-            attachDeleteMenuListener(currentPolyline);
-            attachVertexClickListener(currentPolyline);
-        }
-        function attachVertexClickListener(polyline) {
-            google.maps.event.addListener(polyline, "click", (e) => {
-                if (e.vertex == undefined) {
-                    return;
-                }
-                console.log(JSON.stringify(polyline.getPath().getAt(e.vertex)));
-                // completeCurrentPolyline();
-                // startNewPolyline();
-                // addLatLng(e);
-                // highlightVertex(e);
-            });
-        }
-
-        function handleVertexDrag(path) {
-            for (let i = 0; i < path.getLength(); i++) {
-                const point = path.getAt(i);
-                const snappedPoint = findNearbyPoint(point);
-                if (snappedPoint && !point.equals(snappedPoint)) {
-                    path.setAt(i, snappedPoint);
-                }
-            }
-        }
-
-        function addLatLng(event) {
-            const path = currentPolyline.getPath();
-            const newPoint = event.latLng;
-
-            // Check for nearby points to snap to
-            const snappedPoint = findNearbyPoint(newPoint);
-            if (snappedPoint) {
-                path.push(snappedPoint);
-            } else {
-                path.push(newPoint);
-            }
-        }
-        function attachDeleteMenuListener(polyline) {
-            /**
-             * A menu that lets a user delete a selected vertex of a path.
-             */
-            class DeleteMenu extends google.maps.OverlayView {
-                div_;
-                divListener_;
-                constructor() {
-                    super();
-                    this.div_ = document.createElement("div");
-                    this.div_.className = "delete-menu";
-                    this.div_.innerHTML = "Delete";
-
-                    const menu = this;
-
-                    this.div_.addEventListener("click", (event) => {
-                        event.stopPropagation();
-                        menu.removeVertex();
-                    });
-                }
-                onAdd() {
-                    const deleteMenu = this;
-                    const map = this.getMap();
-
-                    this.getPanes().floatPane.appendChild(this.div_);
-                    // mousedown anywhere on the map except on the menu div will close the
-                    // menu.
-                    this.divListener_ = map.getDiv().addEventListener(
-                        "mousedown",
-                        (e) => {
-                            if (e.target != deleteMenu.div_) {
-                                deleteMenu.close();
-                            }
-                        },
-                        true,
-                    );
-                }
-                onRemove() {
-                    if (this.divListener_) {
-                        google.maps.event.removeListener(this.divListener_);
-                    }
-
-                    this.div_.parentNode.removeChild(this.div_);
-                    // clean up
-                    this.set("position", null);
-                    this.set("path", null);
-                    this.set("vertex", null);
-                }
-                close() {
-                    this.setMap(null);
-                }
-                draw() {
-                    const position = this.get("position");
-                    const projection = this.getProjection();
-
-                    if (!position || !projection) {
-                        return;
-                    }
-
-                    const point = projection.fromLatLngToDivPixel(position);
-
-                    this.div_.style.top = point.y + "px";
-                    this.div_.style.left = point.x + "px";
-                }
-                /**
-                 * Opens the menu at a vertex of a given path.
-                 */
-                open(map, path, vertex) {
-                    this.set("position", path.getAt(vertex));
-                    this.set("path", path);
-                    this.set("vertex", vertex);
-                    this.setMap(map);
-                    //this.draw();
-                }
-                /**
-                 * Deletes the vertex from the path.
-                 */
-                removeVertex() {
-                    const path = this.get("path");
-                    const vertex = this.get("vertex");
-
-                    if (!path || vertex == undefined) {
-                        this.close();
-                        return;
-                    }
-
-                    path.removeAt(vertex);
-                    this.close();
-                }
-            }
-
-            const deleteMenu = new DeleteMenu();
-            google.maps.event.addListener(polyline, "contextmenu", (e) => {
-                // Check if click was on a vertex control point
-                if (e.vertex == undefined) {
-                    return;
-                }
-
-                deleteMenu.open(map, polyline.getPath(), e.vertex);
-            });
-        }
-        function findNearbyPoint(newPoint) {
-            for (const polyline of polylines) {
-                const path = polyline.getPath();
-                for (let i = 0; i < path.getLength(); i++) {
-                    const point = path.getAt(i);
-                    if (google.maps.geometry.spherical.computeDistanceBetween(point, newPoint) <= toleranceRadius) {
-                        return point;
-                    }
-                }
-            }
-            return null;
-        }
-        function highlightVertex(event) {
-            const path = currentPolyline.getPath();
-            for (let i = 0; i < path.getLength(); i++) {
-                if (path.getAt(i).equals(event.latLng)) {
-                    highlightedVertexIndex = i;
-                    break;
-                }
-            }
-            updateIcons(path);
-        }
-
-        function updateIcons(path) {
-            if (highlightedVertexIndex !== null) {
-                let icons = currentPolyline.get('icons');
-                if (!icons || icons.length === 0) {
-                    icons = [{
-                        icon: {
-                            path: google.maps.SymbolPath.CIRCLE,
-                            scale: 7,
-                            fillColor: '#00FF00',
-                            fillOpacity: 1,
-                            strokeWeight: 2,
-                            strokeColor: '#00FF00'
-                        },
-                        offset: '100%'
-                    }];
-                }
-                //icons[0].offset = (highlightedVertexIndex / path.getLength() * 100) + '%';
-                currentPolyline.set('icons', icons);
-            }
-        }
-        function createSaveBtn(map) {
-            const controlButton = document.createElement("button");
-
-            controlButton.textContent = "Save";
-            controlButton.title = "Click to save the floorplan";
-            controlButton.type = "button";
-            controlButton.addEventListener("click", async () => {
-                //overwriteOldPolylines();
-                if (currentFloorNum === null || currentFloorNum === undefined) {
-                    alert('No floor plan selected');
-                    return;
-                }
-
-                const updateData = {
-                    rotation: imageOverlay.rotation,
-                    corners: JSON.stringify({
-                        northEast: { lat: cornerMarkers.northEast.getPosition().lat(), lng: cornerMarkers.northEast.getPosition().lng() },
-                        southWest: { lat: cornerMarkers.southWest.getPosition().lat(), lng: cornerMarkers.southWest.getPosition().lng() }
-                    })
-                };
-
-                const response = await fetch(`/api/floorPlans/order/${currentFloorNum}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(updateData)
-                });
-
-                if (response.ok) {
-                    alert('Floor plan updated successfully');
-                } else {
-                    alert('Failed to update floor plan');
-                }
-            });
-            return controlButton;
-        }
-
-        function completeCurrentPolyline() {
-            if (currentPolyline) {
-                currentPolyline.set('icons', []);
-                currentPolyline = null;
-            }
-        }
-        async function savePolyline(polyline) {
-            const path = polyline.getPath().getArray().map(latlng => ({
-                lat: latlng.lat(),
-                lng: latlng.lng()
-            }));
-
-            const response = await fetch('/api/polylines', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ path })
-            });
-
-            if (!response.ok) {
-                console.error('Failed to save polyline');
-            }
-        }
-        async function loadPolylines() {
-            const response = await fetch('/api/polylines');
-            const polylinesData = await response.json();
-
-            const graph = buildGraph(polylinesData);
-            const startNode = "53.38126924013136,-1.4804716755088942"; // starting point
-            const endNode = "53.38128602983781,-1.4802810969644087"; // ending point
-
-            const path = shortestPath(graph, startNode, endNode);
-
-            console.log("Shortest Path:", path);
-
-
-
-            polylinesData.forEach(data => {
-                const polyline = new google.maps.Polyline({
-                    path: data.path.map(point => new google.maps.LatLng(point.lat, point.lng)),
-                    strokeColor: "#8442f5",
-                    strokeOpacity: 1.0,
-                    strokeWeight: 3,
-                    editable: true,
-                    draggable: true,
-                    map: map
-                });
-
-                polylines.push(polyline);
-
-                const path = polyline.getPath();
-                google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
-                google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
-                attachDeleteMenuListener(polyline);
-                attachVertexClickListener(polyline);
-            });
-            drawShortestPath(path);
-        }
-        async function overwriteOldPolylines() {
-            const response = await fetch('/api/polylines', {
-                method: 'DELETE'
-            });
-            if (response.ok) {
-                console.log('All polylines have been deleted.');
-                let i;
-                for(const polyline of polylines) {
-                    await savePolyline(polyline);
-                    console.log("polyline saved ", i);
-                }
-            } else {
-                alert('Failed to delete polylines.');
-            }
-        }
-        function togglePopup() {
-            const popup = document.getElementById("popup");
-            popup.style.display = popup.style.display === "none" || popup.style.display === "" ? "block" : "none";
-        }
-        function buildGraph(polylinesData) {
-            const graph = {};
-
-            polylinesData.forEach((polyline, polylineIndex) => {
-                polyline.path.forEach((point, index) => {
-                    const pointKey = `${point.lat},${point.lng}`;
-
-                    // Initialize graph node if it doesn't exist
-                    if (!graph[pointKey]) {
-                        graph[pointKey] = [];
-                    }
-
-                    // Connect to the previous point
-                    if (index > 0) {
-                        const prevPoint = polyline.path[index - 1];
-                        const prevPointKey = `${prevPoint.lat},${prevPoint.lng}`;
-                        const distance = google.maps.geometry.spherical.computeDistanceBetween(
-                            new google.maps.LatLng(prevPoint.lat, prevPoint.lng),
-                            new google.maps.LatLng(point.lat, point.lng)
-                        );
-
-                        // Add bidirectional edges
-                        graph[pointKey].push({ node: prevPointKey, weight: distance });
-                        graph[prevPointKey].push({ node: pointKey, weight: distance });
-                    }
-                });
-            });
-
-            return graph;
-        }
-        function dijkstra(graph, startNode) {
-            const distances = {};
-            const previous = {};
-            const pq = new PriorityQueue((a, b) => distances[a] < distances[b]);
-
-            // Initialize distances and priority queue
-            for (let node in graph) {
-                if (node === startNode) {
-                    distances[node] = 0;
-                    pq.enqueue(node);
-                } else {
-                    distances[node] = Infinity;
-                }
-                previous[node] = null;
-            }
-
-            while (!pq.isEmpty()) {
-                const currentNode = pq.dequeue();
-
-                graph[currentNode].forEach(neighbor => {
-                    const distance = distances[currentNode] + neighbor.weight;
-
-                    if (distance < distances[neighbor.node]) {
-                        distances[neighbor.node] = distance;
-                        previous[neighbor.node] = currentNode;
-                        pq.enqueue(neighbor.node);
-                    }
-                });
-            }
-
-            return { distances, previous };
-        }
-
-        // Priority Queue implementation
-        class PriorityQueue {
-            constructor(comparator) {
-                this._data = [];
-                this._comparator = comparator;
-            }
-
-            enqueue(item) {
-                this._data.push(item);
-                this._data.sort(this._comparator);
-            }
-
-            dequeue() {
-                return this._data.shift();
-            }
-
-            isEmpty() {
-                return this._data.length === 0;
-            }
-        }
-        function shortestPath(graph, startNode, endNode) {
-            const { distances, previous } = dijkstra(graph, startNode);
-            console.log(dijkstra(graph, startNode));
-            let path = [];
-            let currentNode = endNode;
-
-            while (currentNode !== null) {
-                path.push(currentNode);
-                currentNode = previous[currentNode];
-            }
-
-            return path.reverse();
-        }
-        function drawShortestPath(path) {
-            const pathCoordinates = path.map(point => {
-                const [lat, lng] = point.split(',');
-                return { lat: parseFloat(lat), lng: parseFloat(lng) };
-            });
-
-            new google.maps.Polyline({
-                path: pathCoordinates,
-                geodesic: true,
-                strokeColor: "#FF0000",
-                strokeOpacity: 1.0,
-                strokeWeight: 3,
-                map: map
-            });
-        }
-
-        window.initMap = initMap;
-    </script>
     <style>
         #map {
             height: 100%;
@@ -1128,24 +233,505 @@
             height: 40px;
         }
     </style>
+    <script>
+        let map;
+        let mapOnCLickListener;
+        let imageOverlay;
+        let floorplanCoordinates;
+        let allFloorplans;
+        let polylines = [];
+        let overlays = new Map();
+        let markerPairs = [];
+        let favColor = "#0cfabf";
+        let currentPolyline;
+        const toleranceRadius = 1; //snap to point radius
+        let highlightedVertexIndex = null; //next line will be drawn from this vetrtex
+        let currentFloorNum;
+
+        async function initMap() {
+            await loadFloors();
+            if (allFloorplans && allFloorplans.length > 0) {
+                center = allFloorplans[0].center;
+                map = new google.maps.Map(document.getElementById("map"), {
+                    zoom: 20,
+                    center: center,
+                    disableDefaultUI: true,
+                });
+            } else {
+                map = new google.maps.Map(document.getElementById("map"), {
+                    zoom: 19,
+                    center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
+                    disableDefaultUI: true,
+                });
+                mapOnCLickListener = map.addListener("click", (e) => {
+                    floorplanCoordinates = e.latLng;
+                    map.setCenter(floorplanCoordinates);
+                    togglePopup();
+                });
+            }
+            displayFloorPlan(0);
+
+            await loadPolylines();
+            createFloorSelectors();
+
+        }
+
+        function createFloorSelectors() {
+            if(!allFloorplans) {
+                return;
+            }
+            let floorSelectors = new Map();
+            allFloorplans.forEach(function(floor) {
+                let btn = document.createElement('button');
+                btn.textContent = floor.name;
+                btn.label = floor.name;
+                btn.style.display = "inline-block";
+                btn.style.whiteSpace = "nowrap";
+                btn.style.color = "black";
+                btn.style.fontSize = "18px";
+                btn.style.backgroundColor = "white";
+                btn.style.marginRight = "10px";
+                btn.style.marginTop = "10px";
+                btn.style.padding = "10px";
+                btn.style.border = "1px solid #007bff"
+                btn.style.borderRadius = "6px";
+                floorSelectors.set(floor.order, btn);
+                map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(btn);
+                btn.addEventListener('click', function() {
+                    displayFloorPlan(floor.order);
+                });
+            });
+
+        }
+        async function loadFloors() {
+            const response = await fetch('/api/floorPlans');
+            const floorPlans = await response.json();
+            floorPlans.sort((a, b) => a.order - b.order);
+            allFloorplans = floorPlans;
+        }
+
+        function displayFloorPlan(floorNum) {
+            if(allFloorplans.length < 1) {
+                console.log("There are no floors");
+                return;
+            }
+            let alreadyExists = false;
+            if (overlays) {
+                for(const overlay of overlays.values()) {
+                    if (overlay.floorOrder === floorNum) {
+                        alreadyExists = true;
+                        imageOverlay = overlay;
+                        overlay.setIsVisible(true);
+                    } else {
+                        overlay.setIsVisible(false);
+                    }
+                }
+            }
+            currentFloorNum = floorNum;
+            class CustomImageOverlay extends google.maps.OverlayView {
+                constructor(imageUrl, corners, map, rotation, floorNum) {
+                    super();
+                    this.imageUrl = imageUrl;
+                    this.corners = corners; // An array of LatLng objects [northEast, northWest, southEast, southWest]
+                    this.map = map;
+                    this.div = null;
+                    this.rotation = rotation || 0; // Rotation angle in degrees
+                    this.setMap(map);
+                    this.floorOrder = floorNum;
+                    this.visible = true;
+                }
+
+                onAdd() {
+                    this.div = document.createElement('div');
+                    this.div.style.border = 'solid #007bff';
+                    this.div.style.borderWidth = '2px';
+                    this.div.style.position = 'absolute';
+
+                    const img = document.createElement('img');
+                    img.src = this.imageUrl;
+                    img.style.width = '100%';
+                    img.style.height = '100%';
+                    img.style.position = 'absolute';
+                    img.style.transformOrigin = 'center';
+                    img.style.opacity = '1';
+                    this.img = img;
+                    this.div.appendChild(img);
+
+                    const panes = this.getPanes();
+                    panes.overlayLayer.appendChild(this.div);
+                }
+
+                draw() {
+                    if (!this.visible) {
+                        this.div.style.display = 'none';
+                        return;
+                    }
+
+                    this.div.style.display = 'block';
+                    const overlayProjection = this.getProjection();
+
+                    const ne = overlayProjection.fromLatLngToDivPixel(this.corners.northEast);
+                    const sw = overlayProjection.fromLatLngToDivPixel(this.corners.southWest);
+
+                    const div = this.div;
+                    div.style.left = sw.x + 'px';
+                    div.style.top = ne.y + 'px';
+                    div.style.width = (ne.x - sw.x) + 'px';
+                    div.style.height = (sw.y - ne.y) + 'px';
+
+                    // Apply rotation transform
+                    this.div.style.transform = `rotate(${this.rotation}deg)`;
+                }
+
+                onRemove() {
+                    this.div.parentNode.removeChild(this.div);
+                    this.div = null;
+                }
+
+                setRotation(angle) {
+                    this.rotation = angle;
+                    this.draw();
+                }
+                setIsVisible(val) {
+                    this.visible = val;
+                    this.draw();
+                }
+            }
+            //############################
+            if (!alreadyExists) {
+                // Calculate the initial corners based on the center coordinate
+                let corners;
+                corners = allFloorplans[floorNum].corners;
+                imageOverlay = new CustomImageOverlay(allFloorplans[floorNum].img, corners, map, allFloorplans[floorNum].rotation, floorNum);
+                overlays.set(floorNum, imageOverlay);
+            }
+        }
+
+        function attachVertexClickListener(polyline) {
+            google.maps.event.addListener(polyline, "click", (e) => {
+                if (e.vertex == undefined) {
+                    return;
+                }
+                console.log(JSON.stringify(polyline.getPath().getAt(e.vertex)));
+                // completeCurrentPolyline();
+                // startNewPolyline();
+                // addLatLng(e);
+                // highlightVertex(e);
+            });
+        }
+
+        function handleVertexDrag(path) {
+            for (let i = 0; i < path.getLength(); i++) {
+                const point = path.getAt(i);
+                const snappedPoint = findNearbyPoint(point);
+                if (snappedPoint && !point.equals(snappedPoint)) {
+                    path.setAt(i, snappedPoint);
+                }
+            }
+        }
+
+        function attachDeleteMenuListener(polyline) {
+            /**
+             * A menu that lets a user delete a selected vertex of a path.
+             */
+            class DeleteMenu extends google.maps.OverlayView {
+                div_;
+                divListener_;
+                constructor() {
+                    super();
+                    this.div_ = document.createElement("div");
+                    this.div_.className = "delete-menu";
+                    this.div_.innerHTML = "Delete";
+
+                    const menu = this;
+
+                    this.div_.addEventListener("click", (event) => {
+                        event.stopPropagation();
+                        menu.removeVertex();
+                    });
+                }
+                onAdd() {
+                    const deleteMenu = this;
+                    const map = this.getMap();
+
+                    this.getPanes().floatPane.appendChild(this.div_);
+                    // mousedown anywhere on the map except on the menu div will close the
+                    // menu.
+                    this.divListener_ = map.getDiv().addEventListener(
+                        "mousedown",
+                        (e) => {
+                            if (e.target != deleteMenu.div_) {
+                                deleteMenu.close();
+                            }
+                        },
+                        true,
+                    );
+                }
+                onRemove() {
+                    if (this.divListener_) {
+                        google.maps.event.removeListener(this.divListener_);
+                    }
+
+                    this.div_.parentNode.removeChild(this.div_);
+                    // clean up
+                    this.set("position", null);
+                    this.set("path", null);
+                    this.set("vertex", null);
+                }
+                close() {
+                    this.setMap(null);
+                }
+                draw() {
+                    const position = this.get("position");
+                    const projection = this.getProjection();
+
+                    if (!position || !projection) {
+                        return;
+                    }
+
+                    const point = projection.fromLatLngToDivPixel(position);
+
+                    this.div_.style.top = point.y + "px";
+                    this.div_.style.left = point.x + "px";
+                }
+                /**
+                 * Opens the menu at a vertex of a given path.
+                 */
+                open(map, path, vertex) {
+                    this.set("position", path.getAt(vertex));
+                    this.set("path", path);
+                    this.set("vertex", vertex);
+                    this.setMap(map);
+                    //this.draw();
+                }
+                /**
+                 * Deletes the vertex from the path.
+                 */
+                removeVertex() {
+                    const path = this.get("path");
+                    const vertex = this.get("vertex");
+
+                    if (!path || vertex == undefined) {
+                        this.close();
+                        return;
+                    }
+
+                    path.removeAt(vertex);
+                    this.close();
+                }
+            }
+
+            const deleteMenu = new DeleteMenu();
+            google.maps.event.addListener(polyline, "contextmenu", (e) => {
+                // Check if click was on a vertex control point
+                if (e.vertex == undefined) {
+                    return;
+                }
+
+                deleteMenu.open(map, polyline.getPath(), e.vertex);
+            });
+        }
+        function findNearbyPoint(newPoint) {
+            for (const polyline of polylines) {
+                const path = polyline.getPath();
+                for (let i = 0; i < path.getLength(); i++) {
+                    const point = path.getAt(i);
+                    if (google.maps.geometry.spherical.computeDistanceBetween(point, newPoint) <= toleranceRadius) {
+                        return point;
+                    }
+                }
+            }
+            return null;
+        }
+        function highlightVertex(event) {
+            const path = currentPolyline.getPath();
+            for (let i = 0; i < path.getLength(); i++) {
+                if (path.getAt(i).equals(event.latLng)) {
+                    highlightedVertexIndex = i;
+                    break;
+                }
+            }
+            updateIcons(path);
+        }
+
+        function updateIcons(path) {
+            if (highlightedVertexIndex !== null) {
+                let icons = currentPolyline.get('icons');
+                if (!icons || icons.length === 0) {
+                    icons = [{
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 7,
+                            fillColor: '#00FF00',
+                            fillOpacity: 1,
+                            strokeWeight: 2,
+                            strokeColor: '#00FF00'
+                        },
+                        offset: '100%'
+                    }];
+                }
+                currentPolyline.set('icons', icons);
+            }
+        }
+
+        async function loadPolylines() {
+            const response = await fetch('/api/polylines');
+            const polylinesData = await response.json();
+
+            const graph = buildGraph(polylinesData);
+            const startNode = "53.38126924013136,-1.4804716755088942"; // starting point
+            const endNode = "53.38128602983781,-1.4802810969644087"; // ending point
+
+            const path = shortestPath(graph, startNode, endNode);
+
+            console.log("Shortest Path:", path);
+
+
+
+            polylinesData.forEach(data => {
+                const polyline = new google.maps.Polyline({
+                    path: data.path.map(point => new google.maps.LatLng(point.lat, point.lng)),
+                    strokeColor: "#8442f5",
+                    strokeOpacity: 1.0,
+                    strokeWeight: 3,
+                    editable: true,
+                    draggable: true,
+                    map: map
+                });
+
+                polylines.push(polyline);
+
+                const path = polyline.getPath();
+                google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
+                google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
+                attachDeleteMenuListener(polyline);
+                attachVertexClickListener(polyline);
+            });
+            drawShortestPath(path);
+        }
+        function togglePopup() {
+            const popup = document.getElementById("popup");
+            popup.style.display = popup.style.display === "none" || popup.style.display === "" ? "block" : "none";
+        }
+        function buildGraph(polylinesData) {
+            const graph = {};
+
+            polylinesData.forEach((polyline, polylineIndex) => {
+                polyline.path.forEach((point, index) => {
+                    const pointKey = `${point.lat},${point.lng}`;
+
+                    // Initialize graph node if it doesn't exist
+                    if (!graph[pointKey]) {
+                        graph[pointKey] = [];
+                    }
+
+                    // Connect to the previous point
+                    if (index > 0) {
+                        const prevPoint = polyline.path[index - 1];
+                        const prevPointKey = `${prevPoint.lat},${prevPoint.lng}`;
+                        const distance = google.maps.geometry.spherical.computeDistanceBetween(
+                            new google.maps.LatLng(prevPoint.lat, prevPoint.lng),
+                            new google.maps.LatLng(point.lat, point.lng)
+                        );
+
+                        // Add bidirectional edges
+                        graph[pointKey].push({ node: prevPointKey, weight: distance });
+                        graph[prevPointKey].push({ node: pointKey, weight: distance });
+                    }
+                });
+            });
+
+            return graph;
+        }
+        function dijkstra(graph, startNode) {
+            const distances = {};
+            const previous = {};
+            const pq = new PriorityQueue((a, b) => distances[a] < distances[b]);
+
+            // Initialize distances and priority queue
+            for (let node in graph) {
+                if (node === startNode) {
+                    distances[node] = 0;
+                    pq.enqueue(node);
+                } else {
+                    distances[node] = Infinity;
+                }
+                previous[node] = null;
+            }
+
+            while (!pq.isEmpty()) {
+                const currentNode = pq.dequeue();
+
+                graph[currentNode].forEach(neighbor => {
+                    const distance = distances[currentNode] + neighbor.weight;
+
+                    if (distance < distances[neighbor.node]) {
+                        distances[neighbor.node] = distance;
+                        previous[neighbor.node] = currentNode;
+                        pq.enqueue(neighbor.node);
+                    }
+                });
+            }
+
+            return { distances, previous };
+        }
+
+        // Priority Queue implementation
+        class PriorityQueue {
+            constructor(comparator) {
+                this._data = [];
+                this._comparator = comparator;
+            }
+
+            enqueue(item) {
+                this._data.push(item);
+                this._data.sort(this._comparator);
+            }
+
+            dequeue() {
+                return this._data.shift();
+            }
+
+            isEmpty() {
+                return this._data.length === 0;
+            }
+        }
+        function shortestPath(graph, startNode, endNode) {
+            const { distances, previous } = dijkstra(graph, startNode);
+            console.log(dijkstra(graph, startNode));
+            let path = [];
+            let currentNode = endNode;
+
+            while (currentNode !== null) {
+                path.push(currentNode);
+                currentNode = previous[currentNode];
+            }
+
+            return path.reverse();
+        }
+        function drawShortestPath(path) {
+            const pathCoordinates = path.map(point => {
+                const [lat, lng] = point.split(',');
+                return { lat: parseFloat(lat), lng: parseFloat(lng) };
+            });
+
+            new google.maps.Polyline({
+                path: pathCoordinates,
+                geodesic: true,
+                strokeColor: "#FF0000",
+                strokeOpacity: 1.0,
+                strokeWeight: 3,
+                map: map
+            });
+        }
+
+        window.initMap = initMap;
+    </script>
 </head>
 <body>
 <div id="popup" class="popup">
     <div class="popup-content">
-        <form id="floorPlanForm" enctype="multipart/form-data">
-            <label for="name">Floor name:</label><br>
-            <input type="text" id="name" name="name" required><br><br>
-            <label for="order">Order:</label><br>
-            <input type="number" value="0" id="order" name="order" required><br><br>
 
-            <label for="image">Upload an image of the floorplan:</label><br>
-            <input type="file" id="image" name="image" accept="image/*" required><br><br>
-
-            <div class="button-container">
-                <button type="button" class="button-primary" style="background-color: red;" onclick="togglePopup()">Cancel</button>
-                <input type="submit" value="Create" class="button-primary">
-            </div>
-        </form>
     </div>
 </div>
 <div id="map"></div>

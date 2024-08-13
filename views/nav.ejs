@@ -35,17 +35,17 @@
         }
 
         /* Styles for the input text box */
-        input[type="text"], input[type="number"] {
-            width: 300px;
-            height: 40px;
-            padding: 10px;
-            margin: 10px 0;
-            margin-left: 20px;
-            font-size: 18px;
-            border: 1px solid #007bff;
-            border-radius: 8px;
-            box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
-        }
+        /*input[type="text"], input[type="number"] {*/
+        /*    width: 300px;*/
+        /*    height: 40px;*/
+        /*    padding: 10px;*/
+        /*    margin: 10px 0;*/
+        /*    margin-left: 20px;*/
+        /*    font-size: 18px;*/
+        /*    border: 1px solid #007bff;*/
+        /*    border-radius: 8px;*/
+        /*    box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);*/
+        /*}*/
         select {
             width: 100px;
             height: 40px;
@@ -274,6 +274,26 @@
             await loadPolylines();
             createFloorSelectors();
 
+            const inputDestination = document.createElement("input");
+            inputDestination.type = "text";
+            inputDestination.placeholder = "Enter a destination";
+            inputDestination.id = "inputDestination";
+            inputDestination.classList.add('w-11/12', 'text-center', 'p-5', 'rounded-xl', 'm-2.5', 'text-5xl', 'border-blue-500', 'border');
+            //map.controls[google.maps.ControlPosition.TOP_CENTER].push(inputDestination);
+            const searchBtn = document.createElement("button");
+            searchBtn.type = "button";
+            searchBtn.textContent = "Search";
+            searchBtn.classList.add('w-11/12', 'rounded-xl', 'p-5', 'm-2.5', 'text-5xl', 'border-blue-500', 'border', 'bg-purple-600', 'text-white');
+
+            const verticalDiv = document.createElement("div");
+            verticalDiv.classList.add('flex', 'flex-col', 'w-full', 'items-center');
+            verticalDiv.appendChild(inputDestination);
+            verticalDiv.appendChild(searchBtn);
+            map.controls[google.maps.ControlPosition.TOP_CENTER].push(verticalDiv);
+
+            searchBtn.addEventListener("click", (e) => {
+                console.log(inputDestination.value);
+            });
         }
 
         function createFloorSelectors() {
@@ -285,18 +305,19 @@
                 let btn = document.createElement('button');
                 btn.textContent = floor.name;
                 btn.label = floor.name;
-                btn.style.display = "inline-block";
-                btn.style.whiteSpace = "nowrap";
-                btn.style.color = "black";
-                btn.style.fontSize = "18px";
-                btn.style.backgroundColor = "white";
-                btn.style.marginRight = "10px";
-                btn.style.marginTop = "10px";
-                btn.style.padding = "10px";
-                btn.style.border = "1px solid #007bff"
-                btn.style.borderRadius = "6px";
+                btn.classList.add('text-7xl', 'rounded-xl', 'p-5', 'm-5', 'mb-8', 'text-5xl', 'border-blue-500', 'border', 'bg-purple-600', 'text-white');
+                // btn.style.display = "inline-block";
+                // btn.style.whiteSpace = "nowrap";
+                // btn.style.color = "black";
+                // btn.style.fontSize = "18px";
+                // btn.style.backgroundColor = "white";
+                // btn.style.marginRight = "10px";
+                // btn.style.marginTop = "10px";
+                // btn.style.padding = "10px";
+                // btn.style.border = "1px solid #007bff"
+                // btn.style.borderRadius = "6px";
                 floorSelectors.set(floor.order, btn);
-                map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(btn);
+                map.controls[google.maps.ControlPosition.BOTTOM_CENTER].push(btn);
                 btn.addEventListener('click', function() {
                     displayFloorPlan(floor.order);
                 });
@@ -594,8 +615,6 @@
                     strokeColor: "#8442f5",
                     strokeOpacity: 1.0,
                     strokeWeight: 3,
-                    editable: true,
-                    draggable: true,
                     map: map
                 });
 

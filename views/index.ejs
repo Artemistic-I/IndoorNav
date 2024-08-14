@@ -6,7 +6,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <script
-            src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFRCi9RiQ6jNMjspjXa6wVSVH7rbBnIGc&libraries=geometry&callback=initMap&v=weekly"
+            src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFRCi9RiQ6jNMjspjXa6wVSVH7rbBnIGc&libraries=geometry,marker&callback=initMap&v=weekly"
             defer
     ></script>
     <script>
@@ -21,9 +21,11 @@
       let polylines = [];
       let overlays = new Map();
       let markerPairs = [];
+      let poiMarkers = [];
       let favColor = "#0cfabf";
       let currentPolyline;
       let selectedValueDropdown;
+      let poiCoordinates;
       const toleranceRadius = 1; //snap to point radius
       let highlightedVertexIndex = null; //next line will be drawn from this vetrtex
       let currentFloorNum;
@@ -35,18 +37,26 @@
 
       async function initMap() {
         await loadFloors();
+        await loadMarkers();
+        const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
         if (allFloorplans && allFloorplans.length > 0) {
           center = allFloorplans[0].center;
           map = new google.maps.Map(document.getElementById("map"), {
             zoom: 20,
             center: center,
             disableDefaultUI: true,
+            heading: 0.0,
+            tilt: 0.0,
+            mapId: '9ef76c19e202c059',
           });
         } else {
           map = new google.maps.Map(document.getElementById("map"), {
             zoom: 19,
             center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
             disableDefaultUI: true,
+            heading: 0.0,
+            tilt: 0.0,
+            mapId: '9ef76c19e202c059',
           });
           mapOnCLickListener = map.addListener("click", (e) => {
             floorplanCoordinates = e.latLng;
@@ -127,7 +137,7 @@
         dropdown.style.marginTop = "20px";
         dropdown.style.paddingLeft = "10px";
         dropdown.style.fontSize = "18px"
-        // Step 3: Add options to the dropdown menu
+        dropdown.style.display = "inline-block";
         const options = [
           { value: FloorPlanOptions.FLOORS},
           { value: FloorPlanOptions.POINTS_OF_INTEREST},
@@ -196,11 +206,34 @@
               overlay.markers.northEast.setMap(map);
               overlay.markers.southWest.setMap(map);
             }
-            google.maps.event.removeListener(mapOnCLickListener);
-            mapOnCLickListener = null;
+            if(mapOnCLickListener) {
+              google.maps.event.removeListener(mapOnCLickListener);
+              mapOnCLickListener = null;
+            }
+            for (const marker of poiMarkers) {
+              marker.map = null;
+            }
           } else if (selectedValueDropdown === FloorPlanOptions.POINTS_OF_INTEREST) {
-            // Handle the "POINTS_OF_INTEREST" option
+            if(mapOnCLickListener) {
+              google.maps.event.removeListener(mapOnCLickListener);
+              mapOnCLickListener = null;
+            }
+            for (const marker of poiMarkers) {
+              marker.map = map;
+            }
+            sliderContainer.style.display = "none";
+            saveFloorBtn.style.display = "none";
+            savePathBtn.style.display = "none";
+            addFloorBtn.style.display = "none";
+            for (const overlay of overlays.values()) {
+              overlay.markers.northEast.setMap(null);
+              overlay.markers.southWest.setMap(null);
+              overlay.img.style.opacity = "100%";
+            }
           } else if (selectedValueDropdown === FloorPlanOptions.PATHS) {
+            for (const marker of poiMarkers) {
+              marker.map = null;
+            }
             sliderContainer.style.display = "none";
             saveFloorBtn.style.display = "none";
             savePathBtn.style.display = "inline-block";
@@ -280,6 +313,38 @@
             alert('Failed to create floor plan');
           }
         });
+        document.getElementById('poiForm').addEventListener('submit', async function (event) {
+          event.preventDefault();
+          const formData = new FormData(this);
+
+          const data = {
+            name: formData.get('name'),
+            category: formData.get('category'),
+            floornum: currentFloorNum,
+            position: poiCoordinates
+          };
+
+          const response = await fetch('/api/markers', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+          });
+
+          if (response.ok) {
+            togglePopupPOI();
+            const marker = new AdvancedMarkerElement({
+              map,
+              position: poiCoordinates,
+            });
+            alert('POI created successfully');
+          } else {
+            const errorData = await response.json();
+            console.error('Failed to save POI', errorData);
+            alert('Failed to create POI');
+          }
+        });
         if(allFloorplans){
           if (allFloorplans.length > 0) {
             searchButton.style.display = "none";
@@ -333,6 +398,58 @@
           });
         });
 
+      }
+      async function loadMarkers() {
+        const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+        let advancedMarkers;
+        const response = await fetch('/api/markers');
+        advancedMarkers = await response.json();
+        console.log(advancedMarkers);
+        if (response.ok) {
+          console.log('Markers loaded successfully');
+          const infoWindow = new google.maps.InfoWindow();
+          for (const marker of advancedMarkers) {
+            let pinColour;
+            switch(marker.category) {
+              case "entrance":
+                pinColour = "#FBBC04";
+                break;
+              case "room":
+                pinColour = "#03fc17";
+                break;
+              case "stairs":
+                pinColour = "#e803fc";
+                break;
+              case "restroom":
+                pinColour = "#03fcf4";
+                break;
+              case "default":
+                pinColour = "#fc1c03";
+                break;
+            }
+            const pinBackground = new google.maps.marker.PinElement({
+              background: pinColour,
+            });
+            const poiMarker = new AdvancedMarkerElement({
+              map,
+              position: marker.position,
+              title: `POI: ${marker.name}, Type: ${marker.category}`,
+              gmpClickable: true,
+              content: pinBackground.element,
+            });
+            poiMarker.addListener("click", ({ domEvent, latLng }) => {
+              const { target } = domEvent;
+
+              infoWindow.close();
+              infoWindow.setContent(poiMarker.title);
+              infoWindow.open(poiMarker.map, poiMarker);
+            });
+            //poiMarker.map = null;
+            poiMarkers.push(poiMarker);
+          }
+        } else {
+          alert('Failed to load markers');
+        }
       }
       async function loadFloors() {
         const response = await fetch('/api/floorPlans');
@@ -500,11 +617,16 @@
           if (e.vertex == undefined) {
             return;
           }
+          poiCoordinates = polyline.getPath().getAt(e.vertex);
           console.log(JSON.stringify(polyline.getPath().getAt(e.vertex)));
-          completeCurrentPolyline();
-          startNewPolyline();
-          addLatLng(e);
-          highlightVertex(e);
+          if (selectedValueDropdown === FloorPlanOptions.POINTS_OF_INTEREST) {
+            togglePopupPOI();
+          } else {
+            completeCurrentPolyline();
+            startNewPolyline();
+            addLatLng(e);
+            highlightVertex(e);
+          }
         });
       }
 
@@ -740,13 +862,13 @@
         const response = await fetch('/api/polylines');
         const polylinesData = await response.json();
 
-        const graph = buildGraph(polylinesData);
-        const startNode = "53.38126924013136,-1.4804716755088942"; // starting point
-        const endNode = "53.38128602983781,-1.4802810969644087"; // ending point
-
-        const path = shortestPath(graph, startNode, endNode);
-
-        console.log("Shortest Path:", path);
+        // const graph = buildGraph(polylinesData);
+        // const startNode = "53.38126924013136,-1.4804716755088942"; // starting point
+        // const endNode = "53.38128602983781,-1.4802810969644087"; // ending point
+        //
+        // const path = shortestPath(graph, startNode, endNode);
+        //
+        // console.log("Shortest Path:", path);
 
 
 
@@ -769,7 +891,7 @@
           attachDeleteMenuListener(polyline);
           attachVertexClickListener(polyline);
         });
-        drawShortestPath(path);
+        //drawShortestPath(path);
       }
       async function overwriteOldPolylines() {
         const response = await fetch('/api/polylines', {
@@ -788,6 +910,10 @@
       }
       function togglePopup() {
         const popup = document.getElementById("popup");
+        popup.style.display = popup.style.display === "none" || popup.style.display === "" ? "block" : "none";
+      }
+      function togglePopupPOI() {
+        const popup = document.getElementById("popupPOI");
         popup.style.display = popup.style.display === "none" || popup.style.display === "" ? "block" : "none";
       }
       function buildGraph(polylinesData) {
@@ -942,9 +1068,9 @@
         box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
       }
       select {
-        width: 100px;
+        text-align: center;
+        padding: 10px;
         height: 40px;
-        padding-left: 10px;
         margin-top: 10px;
         margin-right: 20px;
         font-size: 18px;
@@ -1094,11 +1220,11 @@
         min-width: 40px;
       }
 
-      .popup input[type="text"], .popup input[type="number"], .popup input[type="file"] {
+      .popup input[type="text"], .popup input[type="number"], .popup input[type="file"], .popup select {
         width: calc(100% - 20px);
-        padding: 10px;
+        padding: 5px;
         margin: 10px 0;
-        font-size: 16px;
+        font-size: 20px;
         border: 1px solid #007bff;
         border-radius: 5px;
       }
@@ -1143,6 +1269,30 @@
 
         <div class="button-container">
           <button type="button" class="button-primary" style="background-color: red;" onclick="togglePopup()">Cancel</button>
+          <input type="submit" value="Create" class="button-primary">
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="popupPOI" class="popup">
+    <div class="popup-content">
+      <form id="poiForm">
+        <label for="name">POI name:</label>
+        <input type="text" id="namePOI" name="name" required><br><br>
+        <label for="category">POI category:</label>
+        <select name="category" id="category">
+          <option value="">No category</option>
+          <option value="room">room</option>
+          <option value="elevator">elevator</option>
+          <option value="stairs">stairs</option>
+          <option value="entrance">entrance</option>
+          <option value="restrooms">restrooms</option>
+          <option value="emergency exit">emergency exit</option>
+        </select>
+
+
+        <div class="button-container">
+          <button type="button" class="button-primary" style="background-color: red;" onclick="togglePopupPOI()">Cancel</button>
           <input type="submit" value="Create" class="button-primary">
         </div>
       </form>

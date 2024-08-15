@@ -6,7 +6,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <script
-            src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFRCi9RiQ6jNMjspjXa6wVSVH7rbBnIGc&libraries=geometry&callback=initMap&v=weekly"
+            src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFRCi9RiQ6jNMjspjXa6wVSVH7rbBnIGc&libraries=geometry,marker&callback=initMap&v=weekly"
             defer
     ></script>
     <style>
@@ -242,6 +242,7 @@
         let polylines = [];
         let overlays = new Map();
         let markerPairs = [];
+        let poiMarkers = [];
         let favColor = "#0cfabf";
         let currentPolyline;
         const toleranceRadius = 1; //snap to point radius
@@ -256,12 +257,18 @@
                     zoom: 20,
                     center: center,
                     disableDefaultUI: true,
+                    heading: 0.0,
+                    tilt: 0.0,
+                    mapId: '9ef76c19e202c059',
                 });
             } else {
                 map = new google.maps.Map(document.getElementById("map"), {
                     zoom: 19,
                     center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
                     disableDefaultUI: true,
+                    heading: 0.0,
+                    tilt: 0.0,
+                    mapId: '9ef76c19e202c059',
                 });
                 mapOnCLickListener = map.addListener("click", (e) => {
                     floorplanCoordinates = e.latLng;
@@ -269,6 +276,7 @@
                     togglePopup();
                 });
             }
+            await loadMarkers();
             displayFloorPlan(0);
 
             await loadPolylines();
@@ -294,6 +302,58 @@
             searchBtn.addEventListener("click", (e) => {
                 console.log(inputDestination.value);
             });
+        }
+        async function loadMarkers() {
+            const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+            let advancedMarkers;
+            const response = await fetch('/api/markers');
+            advancedMarkers = await response.json();
+            console.log(advancedMarkers);
+            if (response.ok) {
+                console.log('Markers loaded successfully');
+                const infoWindow = new google.maps.InfoWindow();
+                for (const marker of advancedMarkers) {
+                    let pinColour;
+                    switch(marker.category) {
+                        case "entrance":
+                            pinColour = "#FBBC04";
+                            break;
+                        case "room":
+                            pinColour = "#03fc17";
+                            break;
+                        case "stairs":
+                            pinColour = "#e803fc";
+                            break;
+                        case "restroom":
+                            pinColour = "#03fcf4";
+                            break;
+                        case "default":
+                            pinColour = "#fc1c03";
+                            break;
+                    }
+                    const pinBackground = new google.maps.marker.PinElement({
+                        background: pinColour,
+                    });
+                    const poiMarker = new AdvancedMarkerElement({
+                        map,
+                        position: marker.position,
+                        title: `POI: ${marker.name}, Type: ${marker.category}`,
+                        gmpClickable: true,
+                        content: pinBackground.element,
+                    });
+                    poiMarker.addListener("click", ({ domEvent, latLng }) => {
+                        const { target } = domEvent;
+
+                        infoWindow.close();
+                        infoWindow.setContent(poiMarker.title);
+                        infoWindow.open(poiMarker.map, poiMarker);
+                    });
+                    //poiMarker.map = null;
+                    poiMarkers.push(poiMarker);
+                }
+            } else {
+                alert('Failed to load markers');
+            }
         }
 
         function createFloorSelectors() {

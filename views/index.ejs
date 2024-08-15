@@ -18,6 +18,7 @@
       let floorplanCoordinates;
       let allFloorplans = new Map();
       let polylines = [];
+      let polylinesData;
       let overlays = new Map();
       let markerPairs = new Map();
       let floorSelectors = new Map();
@@ -87,6 +88,7 @@
         savePathBtn.style.display = "none";
 
         await loadPolylines();
+        displayPolylines();
 
         geocoder = new google.maps.Geocoder();
 
@@ -388,6 +390,8 @@
             map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(btn);
             btn.addEventListener('click', function() {
               displayFloorPlan(floor.order);
+              currentFloorNum = Number(floor.order);
+              displayPolylines();
               if (selectedValueDropdown !== FloorPlanOptions.FLOORS) {
                 for (const overlay of overlays.values()) {
                   overlay.markers.northEast.setMap(null);
@@ -874,9 +878,42 @@
           console.error('Failed to save polyline');
         }
       }
+      function displayPolylines() {
+        if (polylines) {
+          for (const polyline of polylines) {
+            removePolyline(polyline);
+          }
+        }
+        polylines = [];
+        console.log("Polylines should be removed now");
+        for (const data of polylinesData) {
+          if (data.floornum === currentFloorNum) {
+            data.paths.forEach(p => {
+              const polyline = new google.maps.Polyline({
+                path: p.map(point => new google.maps.LatLng(point.lat, point.lng)),
+                strokeColor: "#8442f5",
+                strokeOpacity: 1.0,
+                strokeWeight: 3,
+                editable: true,
+                draggable: true,
+                map: map
+              });
+
+              polylines.push(polyline);
+
+              const path = polyline.getPath();
+              google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
+              google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
+              attachDeleteMenuListener(polyline);
+              attachVertexClickListener(polyline);
+            });
+            return;
+          }
+        }
+      }
       async function loadPolylines() {
         const response = await fetch('/api/polylines');
-        const polylinesData = await response.json();
+        polylinesData = await response.json();
 
         // const graph = buildGraph(polylinesData);
         // const startNode = "53.38126924013136,-1.4804716755088942"; // starting point
@@ -886,30 +923,19 @@
         //
         // console.log("Shortest Path:", path);
 
-
-
-        polylinesData.forEach(data => {
-          data.paths.forEach(p => {
-            const polyline = new google.maps.Polyline({
-              path: p.map(point => new google.maps.LatLng(point.lat, point.lng)),
-              strokeColor: "#8442f5",
-              strokeOpacity: 1.0,
-              strokeWeight: 3,
-              editable: true,
-              draggable: true,
-              map: map
-            });
-
-            polylines.push(polyline);
-
-            const path = polyline.getPath();
-            google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
-            google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
-            attachDeleteMenuListener(polyline);
-            attachVertexClickListener(polyline);
-          });
-        });
         //drawShortestPath(path);
+      }
+      function removePolyline(polyline) {
+        polyline.setMap(null);
+        google.maps.event.clearInstanceListeners(polyline);
+        const path = polyline.getPath();
+        if (path) {
+          google.maps.event.clearInstanceListeners(path);
+          path.forEach(function(latLng, index) {
+            google.maps.event.clearInstanceListeners(latLng);
+          });
+        }
+        polyline = null;
       }
       async function overwriteOldPolylines() {
         if (polylines && polylines.length > 0) {
@@ -925,6 +951,7 @@
         } else {
           await savePolylines();
         }
+        await loadPolylines();
       }
       function togglePopup() {
         const popup = document.getElementById("popup");

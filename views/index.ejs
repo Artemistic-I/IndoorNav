@@ -16,11 +16,11 @@
       let geocoder;
       let imageOverlay;
       let floorplanCoordinates;
-      let allFloorplans;
-      let cornerMarkers;
+      let allFloorplans = new Map();
       let polylines = [];
       let overlays = new Map();
-      let markerPairs = [];
+      let markerPairs = new Map();
+      let floorSelectors = new Map();
       let poiMarkers = [];
       let favColor = "#0cfabf";
       let currentPolyline;
@@ -39,8 +39,8 @@
         await loadFloors();
         await loadMarkers();
         const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
-        if (allFloorplans && allFloorplans.length > 0) {
-          center = allFloorplans[0].center;
+        if (allFloorplans && allFloorplans.size > 0) {
+          center = allFloorplans.get(0).center;
           map = new google.maps.Map(document.getElementById("map"), {
             zoom: 20,
             center: center,
@@ -87,7 +87,6 @@
         savePathBtn.style.display = "none";
 
         await loadPolylines();
-        createFloorSelectors();
 
         geocoder = new google.maps.Geocoder();
 
@@ -150,6 +149,8 @@
           option.text = optionData.value;
           dropdown.appendChild(option);
         });
+        selectedValueDropdown = FloorPlanOptions.FLOORS;
+
 
         const topRightHContainer = document.createElement("div");
         topRightHContainer.id = "topRightHContainer";
@@ -180,6 +181,7 @@
         map.controls[google.maps.ControlPosition.TOP_CENTER].push(sliderContainer);
         map.controls[google.maps.ControlPosition.LEFT_TOP].push(instructionsElement);
         map.controls[google.maps.ControlPosition.TOP_RIGHT].push(dropdown);
+        createFloorSelectors();
 
 
         addFloorBtn.addEventListener("click", (e) => {
@@ -202,10 +204,10 @@
             savePathBtn.style.display = "none";
             addFloorBtn.style.display = "block";
             for (const overlay of overlays.values()) {
-              overlay.img.style.opacity = "50%";
-              overlay.markers.northEast.setMap(map);
-              overlay.markers.southWest.setMap(map);
+              overlay.img.style.opacity = "30%";
             }
+            overlays.get(currentFloorNum).markers.northEast.setMap(map);
+            overlays.get(currentFloorNum).markers.southWest.setMap(map);
             if(mapOnCLickListener) {
               google.maps.event.removeListener(mapOnCLickListener);
               mapOnCLickListener = null;
@@ -279,10 +281,10 @@
               southWest: {lat: floorplanCoordinates.lat() - latOffset, lng: floorplanCoordinates.lng() - lngOffset}  // southWest
             };
           }
-          if(!floorplanCoordinates && allFloorplans[0]) {
-            floorplanCoordinates = allFloorplans[0].center;
-            groundFloorRotation = allFloorplans[0].rotation;
-            groundFloorCorners = allFloorplans[0].corners;
+          if(!floorplanCoordinates && allFloorplans.get(0)) {
+            floorplanCoordinates = allFloorplans.get(0).center;
+            groundFloorRotation = allFloorplans.get(0).rotation;
+            groundFloorCorners = allFloorplans.get(0).corners;
           }
           formData.append('center', JSON.stringify(floorplanCoordinates));
           formData.append('rotation', groundFloorRotation);
@@ -304,11 +306,13 @@
             searchButton.style.display = "none";
             inputAddress.style.display = "none";
             await loadFloors();
-            displayFloorPlan(formData.get("order"));
+            console.log("Checking: ", allFloorplans);
+            console.log(formData.get("order"));
+            console.log(allFloorplans.get(Number(formData.get("order"))).corners);
+            displayFloorPlan(Number(formData.get("order")));
             createFloorSelectors();
             alert('Floor plan created successfully');
 
-            // Optionally, refresh the page or update the UI with the new floor plan
           } else {
             alert('Failed to create floor plan');
           }
@@ -346,7 +350,7 @@
           }
         });
         if(allFloorplans){
-          if (allFloorplans.length > 0) {
+          if (allFloorplans.size > 0) {
             searchButton.style.display = "none";
             inputAddress.style.display = "none";
           }
@@ -365,37 +369,36 @@
         if(!allFloorplans) {
           return;
         }
-        let floorSelectContainer = document.createElement('div');
-        floorSelectContainer.id = "floorSelectContainer";
-        floorSelectContainer.classList.add("vertical-container");
-        floorSelectContainer.style.gap = "5px";
-        let floorSelectors = new Map();
         allFloorplans.forEach(function(floor) {
-          let btn = document.createElement('button');
-          btn.textContent = floor.name;
-          btn.label = floor.name;
-          btn.style.display = "inline-block";
-          btn.style.whiteSpace = "nowrap";
-          btn.style.color = "white";
-          btn.style.fontSize = "18px";
-          btn.style.backgroundColor = "#7C3AED";
-          btn.style.marginRight = "10px";
-          btn.style.marginTop = "10px";
-          btn.style.padding = "10px";
-          btn.style.border = "1px solid #007bff"
-          btn.style.borderRadius = "6px";
-          floorSelectors.set(floor.order, btn);
-          //floorSelectContainer.appendChild(btn);
-          map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(btn);
-          btn.addEventListener('click', function() {
-            displayFloorPlan(floor.order);
-            if (selectedValueDropdown === FloorPlanOptions.PATHS) {
-              for (const overlay of overlays.values()) {
-                overlay.markers.northEast.setMap(null);
-                overlay.markers.southWest.setMap(null);
+          if (!floorSelectors.get(floor.order)) {
+            let btn = document.createElement('button');
+            btn.textContent = floor.name;
+            btn.label = floor.name;
+            btn.style.display = "inline-block";
+            btn.style.whiteSpace = "nowrap";
+            btn.style.color = "white";
+            btn.style.fontSize = "18px";
+            btn.style.backgroundColor = "#7C3AED";
+            btn.style.marginRight = "10px";
+            btn.style.marginTop = "10px";
+            btn.style.padding = "10px";
+            btn.style.border = "1px solid #007bff"
+            btn.style.borderRadius = "6px";
+            floorSelectors.set(floor.order, btn);
+            map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(btn);
+            btn.addEventListener('click', function() {
+              displayFloorPlan(floor.order);
+              if (selectedValueDropdown !== FloorPlanOptions.FLOORS) {
+                for (const overlay of overlays.values()) {
+                  overlay.markers.northEast.setMap(null);
+                  overlay.markers.southWest.setMap(null);
+                }
+              } else {
+                overlays.get(floor.order).markers.northEast.setMap(map);
+                overlays.get(floor.order).markers.southWest.setMap(map);
               }
-            }
-          });
+            });
+          }
         });
 
       }
@@ -455,11 +458,13 @@
         const response = await fetch('/api/floorPlans');
         const floorPlans = await response.json();
         floorPlans.sort((a, b) => a.order - b.order);
-        allFloorplans = floorPlans;
+        floorPlans.forEach(floorPlan => {
+          allFloorplans.set(floorPlan.order, floorPlan);
+        });
       }
 
       function displayFloorPlan(floorNum) {
-        if(allFloorplans.length < 1) {
+        if(allFloorplans.size < 1) {
           console.log("There are no floors");
           return;
         }
@@ -470,9 +475,10 @@
               alreadyExists = true;
               imageOverlay = overlay;
               overlay.setIsVisible(true);
-              overlay.markers.northEast.setMap(map);
-              overlay.markers.southWest.setMap(map);
-
+              if (!overlay.markers.northEast.map) {
+                overlay.markers.northEast.setMap(map);
+                overlay.markers.southWest.setMap(map);
+              }
             } else {
               overlay.setIsVisible(false);
               overlay.markers.northEast.setMap(null);
@@ -480,7 +486,7 @@
             }
           }
         }
-        let center = allFloorplans[floorNum].center;
+
         currentFloorNum = floorNum;
         class CustomImageOverlay extends google.maps.OverlayView {
           constructor(imageUrl, corners, map, rotation, floorNum, markers) {
@@ -565,8 +571,9 @@
         if (!alreadyExists) {
           // Calculate the initial corners based on the center coordinate
           let corners;
-          corners = allFloorplans[floorNum].corners;
-          cornerMarkers = {
+          console.log(allFloorplans.get(floorNum).corners);
+          corners = allFloorplans.get(floorNum).corners;
+          const cornerMarkers = {
             northEast: new google.maps.Marker({
               position: corners.northEast,
               map: map,
@@ -580,12 +587,13 @@
               title: "South-West Corner"
             }),
           };
-          imageOverlay = new CustomImageOverlay(allFloorplans[floorNum].img, corners, map, allFloorplans[floorNum].rotation, floorNum, cornerMarkers);
+          markerPairs.set(floorNum, cornerMarkers);
+          imageOverlay = new CustomImageOverlay(allFloorplans.get(floorNum).img, corners, map, allFloorplans.get(floorNum).rotation, floorNum, cornerMarkers);
           overlays.set(floorNum, imageOverlay);
 
           function updateCorners() {
             corners.northEast = cornerMarkers.northEast.getPosition();
-            corners.southWest = cornerMarkers.southWest.getPosition()
+            corners.southWest = cornerMarkers.southWest.getPosition();
             imageOverlay.updateCorners(corners);
           }
 
@@ -803,7 +811,6 @@
         controlButton.title = "Click to save the floorplan";
         controlButton.type = "button";
         controlButton.addEventListener("click", async () => {
-          //overwriteOldPolylines();
           if (currentFloorNum === null || currentFloorNum === undefined) {
             alert('No floor plan selected');
             return;
@@ -812,8 +819,8 @@
           const updateData = {
             rotation: imageOverlay.rotation,
             corners: JSON.stringify({
-              northEast: { lat: cornerMarkers.northEast.getPosition().lat(), lng: cornerMarkers.northEast.getPosition().lng() },
-              southWest: { lat: cornerMarkers.southWest.getPosition().lat(), lng: cornerMarkers.southWest.getPosition().lng() }
+              northEast: { lat: markerPairs.get(currentFloorNum).northEast.getPosition().lat(), lng: markerPairs.get(currentFloorNum).northEast.getPosition().lng() },
+              southWest: { lat: markerPairs.get(currentFloorNum).southWest.getPosition().lat(), lng: markerPairs.get(currentFloorNum).southWest.getPosition().lng() }
             })
           };
 

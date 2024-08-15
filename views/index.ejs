@@ -847,21 +847,30 @@
           currentPolyline = null;
         }
       }
-      async function savePolyline(polyline) {
-        const path = polyline.getPath().getArray().map(latlng => ({
-          lat: latlng.lat(),
-          lng: latlng.lng()
-        }));
+      async function savePolylines() {
+        let paths = [];
+        for(const polyline of polylines) {
+          const path = polyline.getPath().getArray().map(latlng => ({
+            lat: latlng.lat(),
+            lng: latlng.lng()
+          }));
+          paths.push(path);
+        }
+
+
+        const polylineData = {paths: paths, floornum: currentFloorNum};
 
         const response = await fetch('/api/polylines', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ path })
+          body: JSON.stringify(polylineData)
         });
 
-        if (!response.ok) {
+        if (response.ok) {
+          console.log("Polylines saved successfully");
+        } else {
           console.error('Failed to save polyline');
         }
       }
@@ -880,39 +889,41 @@
 
 
         polylinesData.forEach(data => {
-          const polyline = new google.maps.Polyline({
-            path: data.path.map(point => new google.maps.LatLng(point.lat, point.lng)),
-            strokeColor: "#8442f5",
-            strokeOpacity: 1.0,
-            strokeWeight: 3,
-            editable: true,
-            draggable: true,
-            map: map
+          data.paths.forEach(p => {
+            const polyline = new google.maps.Polyline({
+              path: p.map(point => new google.maps.LatLng(point.lat, point.lng)),
+              strokeColor: "#8442f5",
+              strokeOpacity: 1.0,
+              strokeWeight: 3,
+              editable: true,
+              draggable: true,
+              map: map
+            });
+
+            polylines.push(polyline);
+
+            const path = polyline.getPath();
+            google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
+            google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
+            attachDeleteMenuListener(polyline);
+            attachVertexClickListener(polyline);
           });
-
-          polylines.push(polyline);
-
-          const path = polyline.getPath();
-          google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
-          google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
-          attachDeleteMenuListener(polyline);
-          attachVertexClickListener(polyline);
         });
         //drawShortestPath(path);
       }
       async function overwriteOldPolylines() {
-        const response = await fetch('/api/polylines', {
-          method: 'DELETE'
-        });
-        if (response.ok) {
-          console.log('All polylines have been deleted.');
-          let i;
-          for(const polyline of polylines) {
-            await savePolyline(polyline);
-            console.log("polyline saved ", i);
+        if (polylines && polylines.length > 0) {
+          const response = await fetch(`/api/polylines/floornum/${currentFloorNum}`, {
+            method: 'DELETE'
+          });
+          if (response.ok) {
+            console.log(`All polylines on floor ${currentFloorNum} have been deleted.`);
+            await savePolylines();
+          } else {
+            alert('Failed to delete polylines.');
           }
         } else {
-          alert('Failed to delete polylines.');
+          await savePolylines();
         }
       }
       function togglePopup() {

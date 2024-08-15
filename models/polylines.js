@@ -7,10 +7,10 @@ let Schema = mongoose.Schema;
 
 // Define the schema for the model
 let PolylineSchema = new Schema({
-    path: [{
-        lat: { type: Number, required: true },
-        lng: { type: Number, required: true }
-    }]
+    paths: [[
+        {lat: { type: Number, required: true }, lng: { type: Number, required: true }}
+        ]],
+    floornum: { type: Number, required: true }
 });
 
 // Configure the 'toObject' option for the schema to include getters

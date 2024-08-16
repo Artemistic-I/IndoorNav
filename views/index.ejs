@@ -334,7 +334,7 @@
             togglePopupPOI();
             await loadMarkers();
             displayMarkers();
-            alert('POI created successfully');
+            console.log('POI created successfully');
           } else {
             const errorData = await response.json();
             console.error('Failed to save POI', errorData);
@@ -416,49 +416,85 @@
         for (const marker of advancedMarkers) {
           if(marker.floornum === currentFloorNum) {
             let pinColour;
+            let customMarkerContent = document.createElement('div');
+            customMarkerContent.style.width = '40px';
+            customMarkerContent.style.height = '40px';
+              // Set your desired background color
+            customMarkerContent.style.borderRadius = '50%';  // Make it a circle
+            customMarkerContent.style.display = 'flex';
+            customMarkerContent.style.justifyContent = 'center';
+            customMarkerContent.style.alignItems = 'center';
+            customMarkerContent.style.border = '2px solid black';
+            const emojiElement = document.createElement("div");
+            emojiElement.style.fontSize = "30px";
+            emojiElement.style.lineHeight = "1";
+            customMarkerContent.appendChild(emojiElement);
+            let isEmoji = true;
             switch(marker.category) {
               case "room":
                 pinColour = "#f5ed14";
+                isEmoji = false;
                 break;
               case "lift":
                 pinColour = "#03fcf4";
+                emojiElement.innerText = "🛗";
                 break;
               case "study area":
-                pinColour = "#3b822f";
+                pinColour = "#627585";
+                emojiElement.innerText = "📖";
                 break;
               case "stairs":
                 pinColour = "#e803fc";
+                emojiElement.innerText = "🪜";
                 break;
               case "entrance":
                 pinColour = "#FBBC04";
+                emojiElement.innerText = "🚪";
                 break;
               case "restrooms":
-                pinColour = "#875b2f";
+                pinColour = "white";
+                emojiElement.innerText = "💩";
                 break;
               case "lecture theatre":
                 pinColour = "#710ced";
+                emojiElement.innerText = "🧑‍🏫";
                 break;
               case "silent study":
                 pinColour = "#03fc17";
+                emojiElement.innerText = "🤫";
                 break;
               case "group study":
+                pinColour = "#c77a1c";
+                isEmoji = false;
+                break;
+              case "information":
                 pinColour = "#0791ed";
+                emojiElement.innerText = "i";
+                break;
+              case "food/drinks":
+                pinColour = "#2f8734";
+                emojiElement.innerText = "🍔";
                 break;
               case "default":
                 pinColour = "#000000";
+                isEmoji = false;
                 break;
             }
+            customMarkerContent.style.backgroundColor = pinColour;
             const pinBackground = new google.maps.marker.PinElement({
               background: pinColour,
               glyphColor: "white",
               borderColor: "black"
             });
+            if(!isEmoji) {
+              customMarkerContent = pinBackground.element;
+            }
             const poiMarker = new AdvancedMarkerElement({
               map,
               position: marker.position,
               title: `${marker.name} (Type: ${marker.category})`,
               gmpClickable: true,
-              content: pinBackground.element,
+              content: customMarkerContent
             });
             const infoWindow = new google.maps.InfoWindow();
             poiMarker.addListener("click", ({ domEvent, latLng }) => {
@@ -478,8 +514,7 @@
                 let deleteBtn = document.getElementById('deleteMarkerBtn');
                 deleteBtn.classList.add('p-1', 'bg-red-600', 'border', 'rounded-md', 'text-white', 'm-2');
                 deleteBtn.addEventListener('click', () => {
-                  //removeMarker(poiMarker);
-                  console.log("Marker now removed sort of");
+                  removeMarker(poiMarker);
                   deleteMarker(marker.position.lat, marker.position.lng, marker.floornum);
                   infoWindow.close();
                 });
@@ -1397,6 +1432,8 @@
           <option value="lecture theatre">lecture theatre</option>
           <option value="silent study">silent study</option>
           <option value="group study">group study</option>
+          <option value="information">information</option>
+          <option value="food/drinks">food/drinks</option>
         </select>
 
 

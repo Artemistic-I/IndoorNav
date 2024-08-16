@@ -20,9 +20,10 @@
       let polylines = [];
       let polylinesData;
       let overlays = new Map();
-      let markerPairs = new Map();
+      let markerPairs = new Map(); //custom overlay resizing markers
+      let advancedMarkers; //all poi markers
       let floorSelectors = new Map();
-      let poiMarkers = [];
+      let poiMarkers = [];//current floor poi markers
       let favColor = "#0cfabf";
       let currentPolyline;
       let selectedValueDropdown;
@@ -222,9 +223,7 @@
               google.maps.event.removeListener(mapOnCLickListener);
               mapOnCLickListener = null;
             }
-            for (const marker of poiMarkers) {
-              marker.map = map;
-            }
+            displayMarkers();
             sliderContainer.style.display = "none";
             saveFloorBtn.style.display = "none";
             savePathBtn.style.display = "none";
@@ -340,10 +339,8 @@
 
           if (response.ok) {
             togglePopupPOI();
-            const marker = new AdvancedMarkerElement({
-              map,
-              position: poiCoordinates,
-            });
+            await loadMarkers();
+            displayMarkers();
             alert('POI created successfully');
           } else {
             const errorData = await response.json();
@@ -393,6 +390,13 @@
               currentFloorNum = Number(floor.order);
               displayPolylines();
               if (selectedValueDropdown !== FloorPlanOptions.FLOORS) {
+                if(selectedValueDropdown === FloorPlanOptions.POINTS_OF_INTEREST) {
+                  displayMarkers();
+                } else {
+                  for (const marker of poiMarkers) {
+                    marker.map = null;
+                  }
+                }
                 for (const overlay of overlays.values()) {
                   overlay.markers.northEast.setMap(null);
                   overlay.markers.southWest.setMap(null);
@@ -406,16 +410,19 @@
         });
 
       }
-      async function loadMarkers() {
+      async function displayMarkers() {
+        if (!advancedMarkers) {
+          console.log(`Can't display poi markers: advancedMarkers = ${advancedMarkers}`);
+          return;
+        }
         const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
-        let advancedMarkers;
-        const response = await fetch('/api/markers');
-        advancedMarkers = await response.json();
-        console.log(advancedMarkers);
-        if (response.ok) {
-          console.log('Markers loaded successfully');
-          const infoWindow = new google.maps.InfoWindow();
-          for (const marker of advancedMarkers) {
+        for(let advMarker of poiMarkers) {
+          removeMarker(advMarker);
+        }
+        poiMarkers = [];
+        const infoWindow = new google.maps.InfoWindow();
+        for (const marker of advancedMarkers) {
+          if(marker.floornum === currentFloorNum) {
             let pinColour;
             switch(marker.category) {
               case "entrance":
@@ -444,6 +451,7 @@
               gmpClickable: true,
               content: pinBackground.element,
             });
+
             poiMarker.addListener("click", ({ domEvent, latLng }) => {
               const { target } = domEvent;
 
@@ -451,9 +459,21 @@
               infoWindow.setContent(poiMarker.title);
               infoWindow.open(poiMarker.map, poiMarker);
             });
-            //poiMarker.map = null;
             poiMarkers.push(poiMarker);
           }
+        }
+      }
+      function removeMarker(poiMarker) {
+        poiMarker.map = null;
+        google.maps.event.clearInstanceListeners(poiMarker);
+        //poiMarker = null;
+      }
+      async function loadMarkers() {
+        const response = await fetch('/api/markers');
+        advancedMarkers = await response.json();
+        //console.log(advancedMarkers);
+        if (response.ok) {
+          console.log('Markers loaded successfully');
         } else {
           alert('Failed to load markers');
         }
@@ -871,7 +891,6 @@
           },
           body: JSON.stringify(polylineData)
         });
-
         if (response.ok) {
           console.log("Polylines saved successfully");
         } else {

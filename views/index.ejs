@@ -231,7 +231,7 @@
             for (const overlay of overlays.values()) {
               overlay.markers.northEast.setMap(null);
               overlay.markers.southWest.setMap(null);
-              overlay.img.style.opacity = "100%";
+              overlay.img.style.opacity = "70%";
             }
           } else if (selectedValueDropdown === FloorPlanOptions.PATHS) {
             for (const marker of poiMarkers) {
@@ -260,13 +260,6 @@
           geocode({address: inputAddress.value});
           document.getElementById("instructions").style.display = 'block';
         });
-        // floorplanOverlay.addListener("click", (event) => {
-        //   if (!currentPolyline) {
-        //     startNewPolyline();
-        //   }
-        //   addLatLng(event);
-        //   highlightVertex(event);
-        // });
         document.getElementById('floorPlanForm').addEventListener('submit', async function (event) {
           event.preventDefault();
 
@@ -420,53 +413,103 @@
           removeMarker(advMarker);
         }
         poiMarkers = [];
-        const infoWindow = new google.maps.InfoWindow();
         for (const marker of advancedMarkers) {
           if(marker.floornum === currentFloorNum) {
             let pinColour;
             switch(marker.category) {
-              case "entrance":
-                pinColour = "#FBBC04";
-                break;
               case "room":
-                pinColour = "#03fc17";
+                pinColour = "#f5ed14";
+                break;
+              case "lift":
+                pinColour = "#03fcf4";
+                break;
+              case "study area":
+                pinColour = "#3b822f";
                 break;
               case "stairs":
                 pinColour = "#e803fc";
                 break;
-              case "restroom":
-                pinColour = "#03fcf4";
+              case "entrance":
+                pinColour = "#FBBC04";
+                break;
+              case "restrooms":
+                pinColour = "#875b2f";
+                break;
+              case "lecture theatre":
+                pinColour = "#710ced";
+                break;
+              case "silent study":
+                pinColour = "#03fc17";
+                break;
+              case "group study":
+                pinColour = "#0791ed";
                 break;
               case "default":
-                pinColour = "#fc1c03";
+                pinColour = "#000000";
                 break;
             }
             const pinBackground = new google.maps.marker.PinElement({
               background: pinColour,
+              glyphColor: "white",
+              borderColor: "black"
             });
             const poiMarker = new AdvancedMarkerElement({
               map,
               position: marker.position,
-              title: `POI: ${marker.name}, Type: ${marker.category}`,
+              title: `${marker.name} (Type: ${marker.category})`,
               gmpClickable: true,
               content: pinBackground.element,
             });
-
+            const infoWindow = new google.maps.InfoWindow();
             poiMarker.addListener("click", ({ domEvent, latLng }) => {
               const { target } = domEvent;
 
               infoWindow.close();
-              infoWindow.setContent(poiMarker.title);
+              infoWindow.setContent(`
+          <div>
+            <div id="poiTitle"><strong>${poiMarker.title}</strong></div>
+            <br>
+            <button id="deleteMarkerBtn">Delete</button>
+          </div>
+        `);
               infoWindow.open(poiMarker.map, poiMarker);
+              google.maps.event.addListenerOnce(infoWindow, 'domready', () => {
+                document.getElementById('poiTitle').classList.add('text-lg', 'text-purple-600');
+                let deleteBtn = document.getElementById('deleteMarkerBtn');
+                deleteBtn.classList.add('p-1', 'bg-red-600', 'border', 'rounded-md', 'text-white', 'm-2');
+                deleteBtn.addEventListener('click', () => {
+                  //removeMarker(poiMarker);
+                  console.log("Marker now removed sort of");
+                  deleteMarker(marker.position.lat, marker.position.lng, marker.floornum);
+                  infoWindow.close();
+                });
+              });
             });
             poiMarkers.push(poiMarker);
           }
         }
       }
+      //Hide marker
       function removeMarker(poiMarker) {
         poiMarker.map = null;
         google.maps.event.clearInstanceListeners(poiMarker);
         //poiMarker = null;
+      }
+      //Delete marker from database
+      async function deleteMarker(lat, lng, floornum) {
+        const response = await fetch('/api/markers', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ lat, lng, floornum })
+        });
+
+        if (response.ok) {
+          console.log('Marker deleted successfully');
+        } else {
+          console.error('Failed to delete marker');
+        }
       }
       async function loadMarkers() {
         const response = await fetch('/api/markers');
@@ -1345,13 +1388,15 @@
         <input type="text" id="namePOI" name="name" required><br><br>
         <label for="category">POI category:</label>
         <select name="category" id="category">
-          <option value="">No category</option>
           <option value="room">room</option>
-          <option value="elevator">elevator</option>
+          <option value="lift">lift</option>
+          <option value="study area">study area</option>
           <option value="stairs">stairs</option>
           <option value="entrance">entrance</option>
           <option value="restrooms">restrooms</option>
-          <option value="emergency exit">emergency exit</option>
+          <option value="lecture theatre">lecture theatre</option>
+          <option value="silent study">silent study</option>
+          <option value="group study">group study</option>
         </select>
 
 

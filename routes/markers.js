@@ -9,4 +9,6 @@ router.post('/', markerController.saveMarker);
 // Route to get all markers
 router.get('/', markerController.getAllMarkers);
 
+router.delete('/', markerController.deleteMarker);
+
 module.exports = router;

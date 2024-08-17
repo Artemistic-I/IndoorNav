@@ -347,6 +347,8 @@
             inputAddress.style.display = "none";
           }
         }
+        //console.log(polylinesData)
+        //buildGraph(polylinesData);
       }
       function geocode(request) {
         geocoder.geocode(request, (results, status) => {
@@ -729,14 +731,14 @@
           }
           poiCoordinates = polyline.getPath().getAt(e.vertex);
           console.log(JSON.stringify(polyline.getPath().getAt(e.vertex)));
-          if (selectedValueDropdown === FloorPlanOptions.POINTS_OF_INTEREST) {
-            togglePopupPOI();
-          } else {
-            completeCurrentPolyline();
-            startNewPolyline();
-            addLatLng(e);
-            highlightVertex(e);
-          }
+          // if (selectedValueDropdown === FloorPlanOptions.POINTS_OF_INTEREST) {
+          //   togglePopupPOI();
+          // } else {
+          //   completeCurrentPolyline();
+          //   startNewPolyline();
+          //   addLatLng(e);
+          //   highlightVertex(e);
+          // }
         });
       }
 
@@ -1004,23 +1006,22 @@
               attachDeleteMenuListener(polyline);
               attachVertexClickListener(polyline);
             });
-            return;
           }
         }
+        const graph = buildGraph(polylinesData);
+        console.log(graph);
+        const startNode = "0:53.381411419134636,-1.481581661349216"; // starting point
+        const endNode = "3:53.38181511328735,-1.482212175548987"; // ending point
+
+        const path = shortestPath(graph, startNode, endNode);
+
+        console.log("Shortest Path:", path);
+
+        drawShortestPath(path);
       }
       async function loadPolylines() {
         const response = await fetch('/api/polylines');
         polylinesData = await response.json();
-
-        // const graph = buildGraph(polylinesData);
-        // const startNode = "53.38126924013136,-1.4804716755088942"; // starting point
-        // const endNode = "53.38128602983781,-1.4802810969644087"; // ending point
-        //
-        // const path = shortestPath(graph, startNode, endNode);
-        //
-        // console.log("Shortest Path:", path);
-
-        //drawShortestPath(path);
       }
       function removePolyline(polyline) {
         polyline.setMap(null);
@@ -1061,31 +1062,65 @@
       function buildGraph(polylinesData) {
         const graph = {};
 
-        polylinesData.forEach((polyline, polylineIndex) => {
-          polyline.path.forEach((point, index) => {
-            const pointKey = `${point.lat},${point.lng}`;
+        let printed = false;
+        polylinesData.forEach((polyline) => {
+          const floornum = polyline.floornum; // Get the floor number
+          polyline.paths.forEach((path) => {
+            path.forEach((point, index) => {
+              const pointKey = `${floornum}:${point.lat},${point.lng}`; // Include floornum in the key
+              //console.log(pointKey);
 
-            // Initialize graph node if it doesn't exist
-            if (!graph[pointKey]) {
-              graph[pointKey] = [];
+              // Initialize graph node if it doesn't exist
+              if (!graph[pointKey]) {
+                graph[pointKey] = [];
+              }
+
+              // Connect to the previous point
+              if (index > 0) {
+                const prevPoint = path[index - 1];
+                const prevPointKey = `${floornum}:${prevPoint.lat},${prevPoint.lng}`;
+                const distance = google.maps.geometry.spherical.computeDistanceBetween(
+                        new google.maps.LatLng(prevPoint.lat, prevPoint.lng),
+                        new google.maps.LatLng(point.lat, point.lng)
+                );
+
+                // Add bidirectional edges
+                graph[pointKey].push({ node: prevPointKey, weight: distance });
+                graph[prevPointKey].push({ node: pointKey, weight: distance });
+              }
+            });
+          });
+        });
+        //link floors
+        let stairsAndLifts = new Map();
+        let distanceBetweenFloors = 3; //distance between the floors in meters
+        for (const marker of advancedMarkers) {
+          if (marker.category === "lift" || marker.category === "stairs") {
+            //console.log(`floor: ${marker.floornum} name: ${marker.name}`);
+            if (!stairsAndLifts.has(marker.name)) {
+              stairsAndLifts.set(marker.name, []);
             }
+            stairsAndLifts.get(marker.name).push(marker);
+          }
+        }
+        //console.log(stairsAndLifts);
+        for (const pointsToBeConnected of stairsAndLifts.values()) {
+          pointsToBeConnected.sort((a, b) => a.floornum - b.floornum);
+          pointsToBeConnected.forEach((point, index) => {
+            const pointKey = `${point.floornum}:${point.position.lat},${point.position.lng}`;
 
             // Connect to the previous point
             if (index > 0) {
-              const prevPoint = polyline.path[index - 1];
-              const prevPointKey = `${prevPoint.lat},${prevPoint.lng}`;
-              const distance = google.maps.geometry.spherical.computeDistanceBetween(
-                      new google.maps.LatLng(prevPoint.lat, prevPoint.lng),
-                      new google.maps.LatLng(point.lat, point.lng)
-              );
+              const prevPoint = pointsToBeConnected[index - 1];
+              const prevPointKey = `${prevPoint.floornum}:${prevPoint.position.lat},${prevPoint.position.lng}`;
+              const distance = distanceBetweenFloors;
 
               // Add bidirectional edges
               graph[pointKey].push({ node: prevPointKey, weight: distance });
               graph[prevPointKey].push({ node: pointKey, weight: distance });
             }
           });
-        });
-
+        }
         return graph;
       }
       function dijkstra(graph, startNode) {
@@ -1147,7 +1182,7 @@
         let path = [];
         let currentNode = endNode;
 
-        while (currentNode !== null) {
+        while (currentNode) {
           path.push(currentNode);
           currentNode = previous[currentNode];
         }
@@ -1155,12 +1190,18 @@
         return path.reverse();
       }
       function drawShortestPath(path) {
+        if (path.length < 2) {
+          console.log(`Couldn't find a path: ${path}`);
+          return;
+        }
+
         const pathCoordinates = path.map(point => {
-          const [lat, lng] = point.split(',');
+          const [floorAndLat, lng] = point.split(',');  // Split into "floor:lat" and "lng"
+          const [floor, lat] = floorAndLat.split(':');  // Split "floor:lat" into "floor" and "lat"
           return { lat: parseFloat(lat), lng: parseFloat(lng) };
         });
 
-        new google.maps.Polyline({
+        const route =  new google.maps.Polyline({
           path: pathCoordinates,
           geodesic: true,
           strokeColor: "#FF0000",

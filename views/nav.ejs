@@ -236,18 +236,26 @@
     <script>
         let map;
         let mapOnCLickListener;
+        let geocoder;
         let imageOverlay;
         let floorplanCoordinates;
-        let allFloorplans;
+        let allFloorplans = new Map();
         let polylines = [];
+        let polylinesData;
         let overlays = new Map();
-        let markerPairs = [];
-        let poiMarkers = [];
+        let markerPairs = new Map(); //custom overlay resizing markers
+        let advancedMarkers; //all poi markers
+        let floorSelectors = new Map();
+        let poiMarkers = [];//current floor poi markers
         let favColor = "#0cfabf";
         let currentPolyline;
+        let selectedValueDropdown;
+        let poiCoordinates;
         const toleranceRadius = 1; //snap to point radius
         let highlightedVertexIndex = null; //next line will be drawn from this vetrtex
         let currentFloorNum;
+        let shortestRoute;
+        let routePolyline;
 
         async function initMap() {
             await loadFloors();
@@ -263,7 +271,7 @@
                 });
             } else {
                 map = new google.maps.Map(document.getElementById("map"), {
-                    zoom: 19,
+                    zoom: 20,
                     center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
                     disableDefaultUI: true,
                     heading: 0.0,
@@ -287,7 +295,11 @@
             inputDestination.placeholder = "Enter a destination";
             inputDestination.id = "inputDestination";
             inputDestination.classList.add('w-11/12', 'text-center', 'p-5', 'rounded-xl', 'm-2.5', 'text-5xl', 'border-blue-500', 'border');
-            //map.controls[google.maps.ControlPosition.TOP_CENTER].push(inputDestination);
+
+            const resultsContainer = document.createElement("div");
+            resultsContainer.id = "resultsContainer";
+            resultsContainer.classList.add('w-full', 'max-w-lg', 'bg-white', 'shadow-lg', 'rounded-xl', 'mt-2');
+
             const searchBtn = document.createElement("button");
             searchBtn.type = "button";
             searchBtn.textContent = "Search";
@@ -296,99 +308,267 @@
             const verticalDiv = document.createElement("div");
             verticalDiv.classList.add('flex', 'flex-col', 'w-full', 'items-center');
             verticalDiv.appendChild(inputDestination);
-            verticalDiv.appendChild(searchBtn);
+            verticalDiv.appendChild(resultsContainer);
             map.controls[google.maps.ControlPosition.TOP_CENTER].push(verticalDiv);
+
+            inputDestination.addEventListener("input", async (e) => {
+                resultsContainer.style.display = "inline-block";
+                const query = e.target.value;
+                if (query.length > 2) { // Only search when the query is at least 3 characters
+                    const results = await searchPlaces(query);
+                    displaySearchResults(results);
+                } else {
+                    resultsContainer.innerHTML = ''; // Clear results if query is too short
+                }
+            });
+            async function searchPlaces(query) {
+                //console.log(advancedMarkers);
+                let results = [];
+                for (const poi of advancedMarkers) {
+                    const poiName = poi.name.toLowerCase();
+                    const poiCategory = poi.category.toLowerCase();
+                    if (poiName.includes(query.toLowerCase()) || poiCategory.includes(query.toLowerCase())
+                        || query.toLowerCase().includes(poiName) || query.toLowerCase().includes(poiCategory)) {
+                        //results.push(`${poi.name} (Floor: ${poi.floornum}, Type: ${poi.category})`);
+                        results.push(poi);
+                    }
+                }
+                return results;
+            }
+            function displaySearchResults(results) {
+                resultsContainer.innerHTML = ''; // Clear previous results
+                results.forEach(result => {
+                    const resultItem = document.createElement("div");
+                    resultItem.classList.add('p-2', 'cursor-pointer', 'hover:bg-gray-200');
+                    resultItem.textContent = `${result.name} (Floor: ${result.floornum}, Type: ${result.category})`;
+                    resultItem.addEventListener('click', () => {
+                        map.setCenter(result.position);
+                        currentFloorNum = result.floornum;
+                        displayFloorPlan(result.floornum);
+                        displayMarkers();
+                        map.setZoom(21);
+                        resultsContainer.style.display = "none";
+                    });
+                    resultsContainer.appendChild(resultItem);
+                });
+            }
 
             searchBtn.addEventListener("click", (e) => {
                 console.log(inputDestination.value);
             });
+            const graph = buildGraph(polylinesData);
+            const startNode = "0:53.381411419134636,-1.481581661349216"; // starting point
+            const endNode = "3:53.38181511328735,-1.482212175548987"; // ending point
+            shortestRoute = shortestPath(graph, startNode, endNode);
+            console.log("Shortest Path:", shortestRoute);
+            drawShortestPath(shortestRoute);
+            await displayMarkers();
         }
         async function loadMarkers() {
-            const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
-            let advancedMarkers;
             const response = await fetch('/api/markers');
             advancedMarkers = await response.json();
-            console.log(advancedMarkers);
+            //console.log(advancedMarkers);
             if (response.ok) {
                 console.log('Markers loaded successfully');
-                const infoWindow = new google.maps.InfoWindow();
-                for (const marker of advancedMarkers) {
+            } else {
+                alert('Failed to load markers');
+            }
+        }
+        async function displayMarkers() {
+            if (!advancedMarkers) {
+                console.log(`Can't display poi markers: advancedMarkers = ${advancedMarkers}`);
+                return;
+            }
+            const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+            for(let advMarker of poiMarkers) {
+                removeMarker(advMarker);
+            }
+            poiMarkers = [];
+            for (const marker of advancedMarkers) {
+                if(marker.floornum === currentFloorNum) {
                     let pinColour;
+                    let customMarkerContent = document.createElement('div');
+                    customMarkerContent.style.width = '40px';
+                    customMarkerContent.style.height = '40px';
+                    // Set your desired background color
+                    customMarkerContent.style.borderRadius = '50%';  // Make it a circle
+                    customMarkerContent.style.display = 'flex';
+                    customMarkerContent.style.justifyContent = 'center';
+                    customMarkerContent.style.alignItems = 'center';
+                    customMarkerContent.style.border = '2px solid black';
+                    const emojiElement = document.createElement("div");
+                    emojiElement.style.fontSize = "30px";
+                    emojiElement.style.lineHeight = "1";
+                    customMarkerContent.appendChild(emojiElement);
+                    let isEmoji = true;
                     switch(marker.category) {
-                        case "entrance":
-                            pinColour = "#FBBC04";
-                            break;
                         case "room":
-                            pinColour = "#03fc17";
+                            pinColour = "#f5ed14";
+                            isEmoji = false;
+                            break;
+                        case "lift":
+                            pinColour = "#03fcf4";
+                            emojiElement.innerText = "🛗";
+                            break;
+                        case "study area":
+                            pinColour = "#627585";
+                            emojiElement.innerText = "📖";
                             break;
                         case "stairs":
                             pinColour = "#e803fc";
+                            emojiElement.innerText = "🪜";
                             break;
-                        case "restroom":
-                            pinColour = "#03fcf4";
+                        case "entrance":
+                            pinColour = "#FBBC04";
+                            emojiElement.innerText = "🚪";
+                            break;
+                        case "restrooms":
+                            pinColour = "white";
+                            emojiElement.innerText = "💩";
+                            break;
+                        case "lecture theatre":
+                            pinColour = "#710ced";
+                            emojiElement.innerText = "🧑‍🏫";
+                            break;
+                        case "silent study":
+                            pinColour = "#03fc17";
+                            emojiElement.innerText = "🤫";
+                            break;
+                        case "group study":
+                            pinColour = "#c77a1c";
+                            isEmoji = false;
+                            break;
+                        case "information":
+                            pinColour = "#0791ed";
+                            emojiElement.innerText = "i";
+                            break;
+                        case "food/drinks":
+                            pinColour = "#2f8734";
+                            emojiElement.innerText = "🍔";
                             break;
                         case "default":
-                            pinColour = "#fc1c03";
+                            pinColour = "#000000";
+                            isEmoji = false;
                             break;
                     }
+                    customMarkerContent.style.backgroundColor = pinColour;
                     const pinBackground = new google.maps.marker.PinElement({
                         background: pinColour,
+                        glyphColor: "white",
+                        borderColor: "black"
                     });
+                    if(!isEmoji) {
+                        customMarkerContent = pinBackground.element;
+                    }
                     const poiMarker = new AdvancedMarkerElement({
                         map,
                         position: marker.position,
-                        title: `POI: ${marker.name}, Type: ${marker.category}`,
+                        title: `${marker.name} (Type: ${marker.category})`,
                         gmpClickable: true,
-                        content: pinBackground.element,
+                        content: customMarkerContent
                     });
+                    const infoWindow = new google.maps.InfoWindow();
                     poiMarker.addListener("click", ({ domEvent, latLng }) => {
                         const { target } = domEvent;
 
                         infoWindow.close();
-                        infoWindow.setContent(poiMarker.title);
+                        infoWindow.setContent(`
+          <div>
+            <div id="poiTitle"><strong>${poiMarker.title}</strong></div>
+            <br>
+            <button id="deleteMarkerBtn">Delete</button>
+          </div>
+        `);
                         infoWindow.open(poiMarker.map, poiMarker);
+                        google.maps.event.addListenerOnce(infoWindow, 'domready', () => {
+                            document.getElementById('poiTitle').classList.add('text-lg', 'text-purple-600');
+                            let deleteBtn = document.getElementById('deleteMarkerBtn');
+                            deleteBtn.classList.add('p-1', 'bg-red-600', 'border', 'rounded-md', 'text-white', 'm-2');
+                            deleteBtn.addEventListener('click', () => {
+                                removeMarker(poiMarker);
+                                deleteMarker(marker.position.lat, marker.position.lng, marker.floornum);
+                                infoWindow.close();
+                            });
+                        });
                     });
-                    //poiMarker.map = null;
                     poiMarkers.push(poiMarker);
                 }
-            } else {
-                alert('Failed to load markers');
             }
+        }
+        //Hide marker
+        function removeMarker(poiMarker) {
+            poiMarker.map = null;
+            google.maps.event.clearInstanceListeners(poiMarker);
+            //poiMarker = null;
         }
 
         function createFloorSelectors() {
             if(!allFloorplans) {
                 return;
             }
-            let floorSelectors = new Map();
+            const floorDropdown = document.createElement('select');
+            floorDropdown.classList.add('w-fit', 'text-center', 'h-fit', 'text-6xl', 'rounded-xl','p-2.5' , 'm-5', 'border-blue-500', 'border', 'bg-purple-600', 'text-white');
             allFloorplans.forEach(function(floor) {
-                let btn = document.createElement('button');
-                btn.textContent = floor.name;
-                btn.label = floor.name;
-                btn.classList.add('text-7xl', 'rounded-xl', 'p-5', 'm-5', 'mb-8', 'text-5xl', 'border-blue-500', 'border', 'bg-purple-600', 'text-white');
-                // btn.style.display = "inline-block";
-                // btn.style.whiteSpace = "nowrap";
-                // btn.style.color = "black";
-                // btn.style.fontSize = "18px";
-                // btn.style.backgroundColor = "white";
-                // btn.style.marginRight = "10px";
-                // btn.style.marginTop = "10px";
-                // btn.style.padding = "10px";
-                // btn.style.border = "1px solid #007bff"
-                // btn.style.borderRadius = "6px";
-                floorSelectors.set(floor.order, btn);
-                map.controls[google.maps.ControlPosition.BOTTOM_CENTER].push(btn);
-                btn.addEventListener('click', function() {
-                    displayFloorPlan(floor.order);
-                });
+                let option = document.createElement('option');
+                option.textContent = floor.name;
+                option.value = floor.order;
+                if (floor.order == 0) {
+                    option.selected = true;
+                }
+                floorDropdown.appendChild(option);
             });
+            map.controls[google.maps.ControlPosition.BOTTOM_CENTER].push(floorDropdown);
+            floorDropdown.addEventListener('change', function() {
+                const selectedFloorOrder = Number(this.value);
+
+                if (routePolyline) {
+                    removePolyline(routePolyline);
+                }
+                displayFloorPlan(selectedFloorOrder);
+                currentFloorNum = selectedFloorOrder;
+                displayPolylines();
+                drawShortestPath(shortestRoute);
+                displayMarkers();
+            });
+
+            // let floorSelectors = new Map();
+            // allFloorplans.forEach(function(floor) {
+            //     let btn = document.createElement('button');
+            //     btn.textContent = floor.name;
+            //     btn.label = floor.name;
+            //     btn.classList.add('text-5xl', 'rounded-xl', 'p-5', 'm-5', 'mb-8', 'text-5xl', 'border-blue-500', 'border', 'bg-purple-600', 'text-white');
+            //     // btn.style.display = "inline-block";
+            //     // btn.style.whiteSpace = "nowrap";
+            //     // btn.style.color = "black";
+            //     // btn.style.fontSize = "18px";
+            //     // btn.style.backgroundColor = "white";
+            //     // btn.style.marginRight = "10px";
+            //     // btn.style.marginTop = "10px";
+            //     // btn.style.padding = "10px";
+            //     // btn.style.border = "1px solid #007bff"
+            //     // btn.style.borderRadius = "6px";
+            //     floorSelectors.set(floor.order, btn);
+            //
+            //     btn.addEventListener('click', function() {
+            //         if (routePolyline){
+            //             removePolyline(routePolyline);
+            //         }
+            //         displayFloorPlan(floor.order);
+            //         currentFloorNum = Number(floor.order);
+            //         displayPolylines();
+            //         drawShortestPath(shortestRoute);
+            //         displayMarkers();
+            //     });
+            // });
 
         }
         async function loadFloors() {
             const response = await fetch('/api/floorPlans');
             const floorPlans = await response.json();
             floorPlans.sort((a, b) => a.order - b.order);
-            allFloorplans = floorPlans;
+            floorPlans.forEach(floorPlan => {
+                allFloorplans.set(floorPlan.order, floorPlan);
+            });
         }
 
         function displayFloorPlan(floorNum) {
@@ -481,9 +661,15 @@
             //############################
             if (!alreadyExists) {
                 // Calculate the initial corners based on the center coordinate
+                // let corners;
+                // corners = allFloorplans[floorNum].corners;
+                // imageOverlay = new CustomImageOverlay(allFloorplans[floorNum].img, corners, map, allFloorplans[floorNum].rotation, floorNum);
+                // overlays.set(floorNum, imageOverlay);
+
                 let corners;
-                corners = allFloorplans[floorNum].corners;
-                imageOverlay = new CustomImageOverlay(allFloorplans[floorNum].img, corners, map, allFloorplans[floorNum].rotation, floorNum);
+                //console.log(allFloorplans.get(floorNum).corners);
+                corners = allFloorplans.get(floorNum).corners;
+                imageOverlay = new CustomImageOverlay(allFloorplans.get(floorNum).img, corners, map, allFloorplans.get(floorNum).rotation, floorNum);
                 overlays.set(floorNum, imageOverlay);
             }
         }
@@ -655,38 +841,53 @@
             }
         }
 
+        function displayPolylines() {
+            // if (polylines) {
+            //   for (const polyline of polylines) {
+            //     removePolyline(polyline);
+            //   }
+            // }
+            // polylines = [];
+            // console.log("Polylines should be removed now");
+            // for (const data of polylinesData) {
+            //   if (data.floornum === currentFloorNum) {
+            //     data.paths.forEach(p => {
+            //       const polyline = new google.maps.Polyline({
+            //         path: p.map(point => new google.maps.LatLng(point.lat, point.lng)),
+            //         strokeColor: "#8442f5",
+            //         strokeOpacity: 1.0,
+            //         strokeWeight: 3,
+            //         editable: true,
+            //         draggable: true,
+            //         map: map
+            //       });
+            //
+            //       polylines.push(polyline);
+            //
+            //       const path = polyline.getPath();
+            //       google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
+            //       google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
+            //       attachDeleteMenuListener(polyline);
+            //       attachVertexClickListener(polyline);
+            //     });
+            //   }
+            // }
+        }
         async function loadPolylines() {
             const response = await fetch('/api/polylines');
-            const polylinesData = await response.json();
-
-            const graph = buildGraph(polylinesData);
-            const startNode = "53.38126924013136,-1.4804716755088942"; // starting point
-            const endNode = "53.38128602983781,-1.4802810969644087"; // ending point
-
-            const path = shortestPath(graph, startNode, endNode);
-
-            console.log("Shortest Path:", path);
-
-
-
-            polylinesData.forEach(data => {
-                const polyline = new google.maps.Polyline({
-                    path: data.path.map(point => new google.maps.LatLng(point.lat, point.lng)),
-                    strokeColor: "#8442f5",
-                    strokeOpacity: 1.0,
-                    strokeWeight: 3,
-                    map: map
+            polylinesData = await response.json();
+        }
+        function removePolyline(polyline) {
+            polyline.setMap(null);
+            google.maps.event.clearInstanceListeners(polyline);
+            const path = polyline.getPath();
+            if (path) {
+                google.maps.event.clearInstanceListeners(path);
+                path.forEach(function(latLng, index) {
+                    google.maps.event.clearInstanceListeners(latLng);
                 });
-
-                polylines.push(polyline);
-
-                const path = polyline.getPath();
-                google.maps.event.addListener(path, 'set_at', () => handleVertexDrag(path));
-                google.maps.event.addListener(path, 'insert_at', () => handleVertexDrag(path));
-                attachDeleteMenuListener(polyline);
-                attachVertexClickListener(polyline);
-            });
-            drawShortestPath(path);
+            }
+            polyline = null;
         }
         function togglePopup() {
             const popup = document.getElementById("popup");
@@ -695,31 +896,65 @@
         function buildGraph(polylinesData) {
             const graph = {};
 
-            polylinesData.forEach((polyline, polylineIndex) => {
-                polyline.path.forEach((point, index) => {
-                    const pointKey = `${point.lat},${point.lng}`;
+            let printed = false;
+            polylinesData.forEach((polyline) => {
+                const floornum = polyline.floornum; // Get the floor number
+                polyline.paths.forEach((path) => {
+                    path.forEach((point, index) => {
+                        const pointKey = `${floornum}:${point.lat},${point.lng}`; // Include floornum in the key
+                        //console.log(pointKey);
 
-                    // Initialize graph node if it doesn't exist
-                    if (!graph[pointKey]) {
-                        graph[pointKey] = [];
+                        // Initialize graph node if it doesn't exist
+                        if (!graph[pointKey]) {
+                            graph[pointKey] = [];
+                        }
+
+                        // Connect to the previous point
+                        if (index > 0) {
+                            const prevPoint = path[index - 1];
+                            const prevPointKey = `${floornum}:${prevPoint.lat},${prevPoint.lng}`;
+                            const distance = google.maps.geometry.spherical.computeDistanceBetween(
+                                new google.maps.LatLng(prevPoint.lat, prevPoint.lng),
+                                new google.maps.LatLng(point.lat, point.lng)
+                            );
+
+                            // Add bidirectional edges
+                            graph[pointKey].push({ node: prevPointKey, weight: distance });
+                            graph[prevPointKey].push({ node: pointKey, weight: distance });
+                        }
+                    });
+                });
+            });
+            //link floors
+            let stairsAndLifts = new Map();
+            let distanceBetweenFloors = 3; //distance between the floors in meters
+            for (const marker of advancedMarkers) {
+                if (marker.category === "lift" || marker.category === "stairs") {
+                    //console.log(`floor: ${marker.floornum} name: ${marker.name}`);
+                    if (!stairsAndLifts.has(marker.name)) {
+                        stairsAndLifts.set(marker.name, []);
                     }
+                    stairsAndLifts.get(marker.name).push(marker);
+                }
+            }
+            //console.log(stairsAndLifts);
+            for (const pointsToBeConnected of stairsAndLifts.values()) {
+                pointsToBeConnected.sort((a, b) => a.floornum - b.floornum);
+                pointsToBeConnected.forEach((point, index) => {
+                    const pointKey = `${point.floornum}:${point.position.lat},${point.position.lng}`;
 
                     // Connect to the previous point
                     if (index > 0) {
-                        const prevPoint = polyline.path[index - 1];
-                        const prevPointKey = `${prevPoint.lat},${prevPoint.lng}`;
-                        const distance = google.maps.geometry.spherical.computeDistanceBetween(
-                            new google.maps.LatLng(prevPoint.lat, prevPoint.lng),
-                            new google.maps.LatLng(point.lat, point.lng)
-                        );
+                        const prevPoint = pointsToBeConnected[index - 1];
+                        const prevPointKey = `${prevPoint.floornum}:${prevPoint.position.lat},${prevPoint.position.lng}`;
+                        const distance = distanceBetweenFloors;
 
                         // Add bidirectional edges
                         graph[pointKey].push({ node: prevPointKey, weight: distance });
                         graph[prevPointKey].push({ node: pointKey, weight: distance });
                     }
                 });
-            });
-
+            }
             return graph;
         }
         function dijkstra(graph, startNode) {
@@ -781,7 +1016,7 @@
             let path = [];
             let currentNode = endNode;
 
-            while (currentNode !== null) {
+            while (currentNode) {
                 path.push(currentNode);
                 currentNode = previous[currentNode];
             }
@@ -789,18 +1024,36 @@
             return path.reverse();
         }
         function drawShortestPath(path) {
+            if (path.length < 2) {
+                console.log(`Couldn't find a path: ${path}`);
+                return;
+            }
+            console.log(`Current floor num: ${currentFloorNum}`);
             const pathCoordinates = path.map(point => {
-                const [lat, lng] = point.split(',');
-                return { lat: parseFloat(lat), lng: parseFloat(lng) };
-            });
-
-            new google.maps.Polyline({
+                const [floorAndLat, lng] = point.split(',');  // Split into "floor:lat" and "lng"
+                const [floor, lat] = floorAndLat.split(':');  // Split "floor:lat" into "floor" and "lat"
+                if (Number(floor) !== currentFloorNum) {
+                    return null;
+                }
+                return {floor:floor, lat: parseFloat(lat), lng: parseFloat(lng) };
+            }).filter(point => point !== null);
+            console.log(pathCoordinates);
+            routePolyline = new google.maps.Polyline({
                 path: pathCoordinates,
                 geodesic: true,
-                strokeColor: "#FF0000",
+                strokeColor: "#11bd3c",
                 strokeOpacity: 1.0,
-                strokeWeight: 3,
-                map: map
+                strokeWeight: 5,
+                map: map,
+                icons: [{
+                    icon: {
+                        path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,  // Arrow symbol
+                        scale: 3,  // Size of the arrow
+                        strokeColor: "#11bd3c",  // Color of the arrow
+                    },
+                    offset: '0%',  // Start from the beginning of the line
+                    repeat: '130px'  // Repeat every 100 pixels
+                }]
             });
         }
 

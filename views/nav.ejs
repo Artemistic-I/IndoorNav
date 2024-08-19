@@ -245,7 +245,6 @@
         let overlays = new Map();
         let markerPairs = new Map(); //custom overlay resizing markers
         let advancedMarkers; //all poi markers
-        let floorSelectors = new Map();
         let poiMarkers = [];//current floor poi markers
         let favColor = "#0cfabf";
         let currentPolyline;
@@ -256,11 +255,13 @@
         let currentFloorNum;
         let shortestRoute;
         let routePolyline;
+        let graph;
+        let floorDropdownOptions = [];
 
         async function initMap() {
             await loadFloors();
-            if (allFloorplans && allFloorplans.length > 0) {
-                center = allFloorplans[0].center;
+            if (allFloorplans && allFloorplans.size > 0) {
+                center = allFloorplans.get(0).center;
                 map = new google.maps.Map(document.getElementById("map"), {
                     zoom: 20,
                     center: center,
@@ -272,17 +273,17 @@
             } else {
                 map = new google.maps.Map(document.getElementById("map"), {
                     zoom: 20,
-                    center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
+                    center: { lat: 55.38169097419639, lng: -1.4820265913660122 },
                     disableDefaultUI: true,
                     heading: 0.0,
                     tilt: 0.0,
                     mapId: '9ef76c19e202c059',
                 });
-                mapOnCLickListener = map.addListener("click", (e) => {
-                    floorplanCoordinates = e.latLng;
-                    map.setCenter(floorplanCoordinates);
-                    togglePopup();
-                });
+                // mapOnCLickListener = map.addListener("click", (e) => {
+                //     floorplanCoordinates = e.latLng;
+                //     map.setCenter(floorplanCoordinates);
+                //     togglePopup();
+                // });
             }
             await loadMarkers();
             displayFloorPlan(0);
@@ -298,7 +299,7 @@
 
             const resultsContainer = document.createElement("div");
             resultsContainer.id = "resultsContainer";
-            resultsContainer.classList.add('w-full', 'max-w-lg', 'bg-white', 'shadow-lg', 'rounded-xl', 'mt-2');
+            resultsContainer.classList.add('max-h-96', 'overflow-y-auto', 'text-3xl', 'w-11/12', 'text-center', 'bg-white', 'shadow-lg', 'rounded-xl', 'mt-2');
 
             const searchBtn = document.createElement("button");
             searchBtn.type = "button";
@@ -312,7 +313,7 @@
             map.controls[google.maps.ControlPosition.TOP_CENTER].push(verticalDiv);
 
             inputDestination.addEventListener("input", async (e) => {
-                resultsContainer.style.display = "inline-block";
+                resultsContainer.style.display = "block";
                 const query = e.target.value;
                 if (query.length > 2) { // Only search when the query is at least 3 characters
                     const results = await searchPlaces(query);
@@ -329,7 +330,6 @@
                     const poiCategory = poi.category.toLowerCase();
                     if (poiName.includes(query.toLowerCase()) || poiCategory.includes(query.toLowerCase())
                         || query.toLowerCase().includes(poiName) || query.toLowerCase().includes(poiCategory)) {
-                        //results.push(`${poi.name} (Floor: ${poi.floornum}, Type: ${poi.category})`);
                         results.push(poi);
                     }
                 }
@@ -339,7 +339,7 @@
                 resultsContainer.innerHTML = ''; // Clear previous results
                 results.forEach(result => {
                     const resultItem = document.createElement("div");
-                    resultItem.classList.add('p-2', 'cursor-pointer', 'hover:bg-gray-200');
+                    resultItem.classList.add('text-4xl', 'text-gray-500','rounded-md', 'border', 'p-6', 'cursor-pointer', 'hover:bg-purple-500', 'hover:text-white');
                     resultItem.textContent = `${result.name} (Floor: ${result.floornum}, Type: ${result.category})`;
                     resultItem.addEventListener('click', () => {
                         map.setCenter(result.position);
@@ -347,21 +347,21 @@
                         displayFloorPlan(result.floornum);
                         displayMarkers();
                         map.setZoom(21);
+                        for (let option of floorDropdownOptions) {
+                            if (option.value == result.floornum) {
+                                option.selected = true;
+                            }
+                        }
                         resultsContainer.style.display = "none";
                     });
                     resultsContainer.appendChild(resultItem);
                 });
             }
 
-            searchBtn.addEventListener("click", (e) => {
-                console.log(inputDestination.value);
-            });
-            const graph = buildGraph(polylinesData);
-            const startNode = "0:53.381411419134636,-1.481581661349216"; // starting point
-            const endNode = "3:53.38181511328735,-1.482212175548987"; // ending point
-            shortestRoute = shortestPath(graph, startNode, endNode);
-            console.log("Shortest Path:", shortestRoute);
-            drawShortestPath(shortestRoute);
+            // searchBtn.addEventListener("click", (e) => {
+            //     console.log(inputDestination.value);
+            // });
+            graph = buildGraph(polylinesData);
             await displayMarkers();
         }
         async function loadMarkers() {
@@ -467,27 +467,32 @@
                         gmpClickable: true,
                         content: customMarkerContent
                     });
-                    const infoWindow = new google.maps.InfoWindow();
                     poiMarker.addListener("click", ({ domEvent, latLng }) => {
                         const { target } = domEvent;
-
-                        infoWindow.close();
+                        const infoWindow = new google.maps.InfoWindow();
+                        //infoWindow.close();
                         infoWindow.setContent(`
           <div>
-            <div id="poiTitle"><strong>${poiMarker.title}</strong></div>
+            <div class="poiTitle"><strong>${poiMarker.title}</strong></div>
             <br>
-            <button id="deleteMarkerBtn">Delete</button>
+            <button class="goHereBtn">Show directions</button>
           </div>
         `);
                         infoWindow.open(poiMarker.map, poiMarker);
                         google.maps.event.addListenerOnce(infoWindow, 'domready', () => {
-                            document.getElementById('poiTitle').classList.add('text-lg', 'text-purple-600');
-                            let deleteBtn = document.getElementById('deleteMarkerBtn');
-                            deleteBtn.classList.add('p-1', 'bg-red-600', 'border', 'rounded-md', 'text-white', 'm-2');
-                            deleteBtn.addEventListener('click', () => {
-                                removeMarker(poiMarker);
-                                deleteMarker(marker.position.lat, marker.position.lng, marker.floornum);
-                                infoWindow.close();
+                            document.querySelectorAll('.poiTitle').forEach(el => {
+                                el.classList.add('text-4xl', 'text-purple-600');
+                            });
+                            document.querySelectorAll('.goHereBtn').forEach(btn => {
+                                btn.classList.add('text-4xl','w-full', 'p-2', 'bg-yellow-500', 'border', 'rounded-md', 'text-white', 'm-2');
+                                btn.addEventListener('click', () => {
+                                    const startNode = "0:53.381411419134636,-1.481581661349216"; // starting point
+                                    const endNode = `${marker.floornum}:${marker.position.lat},${marker.position.lng}`; // ending point
+                                    shortestRoute = shortestPath(graph, startNode, endNode);
+                                    console.log("Shortest Path:", shortestRoute);
+                                    drawShortestPath(shortestRoute);
+                                    infoWindow.close();
+                                });
                             });
                         });
                     });
@@ -510,6 +515,7 @@
             floorDropdown.classList.add('w-fit', 'text-center', 'h-fit', 'text-6xl', 'rounded-xl','p-2.5' , 'm-5', 'border-blue-500', 'border', 'bg-purple-600', 'text-white');
             allFloorplans.forEach(function(floor) {
                 let option = document.createElement('option');
+                floorDropdownOptions.push(option);
                 option.textContent = floor.name;
                 option.value = floor.order;
                 if (floor.order == 0) {
@@ -527,39 +533,11 @@
                 displayFloorPlan(selectedFloorOrder);
                 currentFloorNum = selectedFloorOrder;
                 displayPolylines();
-                drawShortestPath(shortestRoute);
                 displayMarkers();
+                if(shortestRoute) {
+                    drawShortestPath(shortestRoute);
+                }
             });
-
-            // let floorSelectors = new Map();
-            // allFloorplans.forEach(function(floor) {
-            //     let btn = document.createElement('button');
-            //     btn.textContent = floor.name;
-            //     btn.label = floor.name;
-            //     btn.classList.add('text-5xl', 'rounded-xl', 'p-5', 'm-5', 'mb-8', 'text-5xl', 'border-blue-500', 'border', 'bg-purple-600', 'text-white');
-            //     // btn.style.display = "inline-block";
-            //     // btn.style.whiteSpace = "nowrap";
-            //     // btn.style.color = "black";
-            //     // btn.style.fontSize = "18px";
-            //     // btn.style.backgroundColor = "white";
-            //     // btn.style.marginRight = "10px";
-            //     // btn.style.marginTop = "10px";
-            //     // btn.style.padding = "10px";
-            //     // btn.style.border = "1px solid #007bff"
-            //     // btn.style.borderRadius = "6px";
-            //     floorSelectors.set(floor.order, btn);
-            //
-            //     btn.addEventListener('click', function() {
-            //         if (routePolyline){
-            //             removePolyline(routePolyline);
-            //         }
-            //         displayFloorPlan(floor.order);
-            //         currentFloorNum = Number(floor.order);
-            //         displayPolylines();
-            //         drawShortestPath(shortestRoute);
-            //         displayMarkers();
-            //     });
-            // });
 
         }
         async function loadFloors() {
@@ -660,12 +638,6 @@
             }
             //############################
             if (!alreadyExists) {
-                // Calculate the initial corners based on the center coordinate
-                // let corners;
-                // corners = allFloorplans[floorNum].corners;
-                // imageOverlay = new CustomImageOverlay(allFloorplans[floorNum].img, corners, map, allFloorplans[floorNum].rotation, floorNum);
-                // overlays.set(floorNum, imageOverlay);
-
                 let corners;
                 //console.log(allFloorplans.get(floorNum).corners);
                 corners = allFloorplans.get(floorNum).corners;
@@ -1028,16 +1000,91 @@
                 console.log(`Couldn't find a path: ${path}`);
                 return;
             }
-            console.log(`Current floor num: ${currentFloorNum}`);
+            //helping user which floor to switch to along the route
+            const relevantFloors = new Map();
+            for (const floor of allFloorplans.keys()) {
+                relevantFloors.set(Number(floor), 0);
+            }
+            let initialFloor;
+            let isAscending
             const pathCoordinates = path.map(point => {
                 const [floorAndLat, lng] = point.split(',');  // Split into "floor:lat" and "lng"
                 const [floor, lat] = floorAndLat.split(':');  // Split "floor:lat" into "floor" and "lat"
+                if (!initialFloor) {
+                    initialFloor = floor;
+                } else if (!isAscending) {
+                    if (floor > initialFloor) {
+                        isAscending = true;
+                    } else if (floor < initialFloor) {
+                        isAscending = false;
+                    }
+                }
+                relevantFloors.set(Number(floor), Number(relevantFloors.get(Number(floor)))+1);
                 if (Number(floor) !== currentFloorNum) {
                     return null;
                 }
                 return {floor:floor, lat: parseFloat(lat), lng: parseFloat(lng) };
             }).filter(point => point !== null);
+            for (let [key, value] of relevantFloors) {
+                if (value < 2) {
+                    relevantFloors.delete(key);
+                }
+            }
+            const relevantFloors2 = Array.from(relevantFloors.keys());
+            relevantFloors2.sort((a, b) => a - b);
             console.log(pathCoordinates);
+            let nextFloor;
+            if (isAscending) {
+                for (let i = 0; i < relevantFloors2.length - 1; i++){
+                    if (relevantFloors2[i] === currentFloorNum) {
+                        console.log(`Go to floor ${relevantFloors2[i+1]}`);
+                        const lastCoordinate = pathCoordinates[pathCoordinates.length - 1];
+                        const lastLat = lastCoordinate.lat;
+                        const lastLng = lastCoordinate.lng;
+                        const infoWindow = new google.maps.InfoWindow({
+                            content: `<div class="text-5xl text-indigo-600">Go to floor ${relevantFloors2[i+1]}</div>`,
+                        });
+                        let marker = new google.maps.Marker({
+                            position: {lat: lastLat, lng: lastLng},
+                            map: map,
+                            title: "You've reached the end!"
+                        });
+                        infoWindow.open(map, marker);
+                        infoWindow.addListener('closeclick', () => {
+                            // Remove the marker from the map when the infoWindow is closed
+                            marker.setMap(null);
+                            marker = null;
+                        });
+                        break;
+                    }
+                }
+            } else {
+                console.log("descending");
+                for (let i = relevantFloors2.length; i > 0; i--) {
+                    if (relevantFloors2[i] === currentFloorNum) {
+                        console.log(`Go to floor ${relevantFloors2[i-1]}`);
+                        const lastCoordinate = pathCoordinates[pathCoordinates.length - 1];
+                        const lastLat = lastCoordinate.lat;
+                        const lastLng = lastCoordinate.lng;
+                        const infoWindow = new google.maps.InfoWindow({
+                            content: `<div class="text-5xl text-indigo-600">Go to floor ${relevantFloors2[i-1]}</div>`
+                        });
+                        let marker = new google.maps.Marker({
+                            position: {lat: lastLat, lng: lastLng},
+                            map: map,
+                            title: "You've reached the end!"
+                        });
+                        infoWindow.open(map, marker);
+                        infoWindow.addListener('closeclick', () => {
+                            // Remove the marker from the map when the infoWindow is closed
+                            marker.setMap(null);
+                            marker = null;
+                        });
+                        break;
+                    }
+                }
+            }
+
             routePolyline = new google.maps.Polyline({
                 path: pathCoordinates,
                 geodesic: true,

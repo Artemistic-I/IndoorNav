@@ -10,7 +10,6 @@
             defer
     ></script>
     <script>
-      //let poly;
       let map;
       let mapOnCLickListener;
       let geocoder;
@@ -31,6 +30,8 @@
       const toleranceRadius = 1; //snap to point radius
       let highlightedVertexIndex = null; //next line will be drawn from this vetrtex
       let currentFloorNum;
+      let shortestRoute;
+      let routePolyline;
       const FloorPlanOptions = {
         FLOORS: 'Floors',
         POINTS_OF_INTEREST: 'Points of interest',
@@ -347,8 +348,12 @@
             inputAddress.style.display = "none";
           }
         }
-        //console.log(polylinesData)
-        //buildGraph(polylinesData);
+        // const graph = buildGraph(polylinesData);
+        // const startNode = "0:53.381411419134636,-1.481581661349216"; // starting point
+        // const endNode = "3:53.38181511328735,-1.482212175548987"; // ending point
+        // shortestRoute = shortestPath(graph, startNode, endNode);
+        // console.log("Shortest Path:", shortestRoute);
+        // drawShortestPath(shortestRoute);
       }
       function geocode(request) {
         geocoder.geocode(request, (results, status) => {
@@ -381,9 +386,13 @@
             floorSelectors.set(floor.order, btn);
             map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(btn);
             btn.addEventListener('click', function() {
+              // if (routePolyline){
+              //   removePolyline(routePolyline);
+              // }
               displayFloorPlan(floor.order);
               currentFloorNum = Number(floor.order);
               displayPolylines();
+              // drawShortestPath(shortestRoute);
               if (selectedValueDropdown !== FloorPlanOptions.FLOORS) {
                 if(selectedValueDropdown === FloorPlanOptions.POINTS_OF_INTEREST) {
                   displayMarkers();
@@ -731,14 +740,14 @@
           }
           poiCoordinates = polyline.getPath().getAt(e.vertex);
           console.log(JSON.stringify(polyline.getPath().getAt(e.vertex)));
-          // if (selectedValueDropdown === FloorPlanOptions.POINTS_OF_INTEREST) {
-          //   togglePopupPOI();
-          // } else {
-          //   completeCurrentPolyline();
-          //   startNewPolyline();
-          //   addLatLng(e);
-          //   highlightVertex(e);
-          // }
+          if (selectedValueDropdown === FloorPlanOptions.POINTS_OF_INTEREST) {
+            togglePopupPOI();
+          } else {
+            completeCurrentPolyline();
+            startNewPolyline();
+            addLatLng(e);
+            highlightVertex(e);
+          }
         });
       }
 
@@ -1008,16 +1017,6 @@
             });
           }
         }
-        const graph = buildGraph(polylinesData);
-        console.log(graph);
-        const startNode = "0:53.381411419134636,-1.481581661349216"; // starting point
-        const endNode = "3:53.38181511328735,-1.482212175548987"; // ending point
-
-        const path = shortestPath(graph, startNode, endNode);
-
-        console.log("Shortest Path:", path);
-
-        drawShortestPath(path);
       }
       async function loadPolylines() {
         const response = await fetch('/api/polylines');
@@ -1194,20 +1193,32 @@
           console.log(`Couldn't find a path: ${path}`);
           return;
         }
-
+        console.log(`Current floor num: ${currentFloorNum}`);
         const pathCoordinates = path.map(point => {
           const [floorAndLat, lng] = point.split(',');  // Split into "floor:lat" and "lng"
           const [floor, lat] = floorAndLat.split(':');  // Split "floor:lat" into "floor" and "lat"
-          return { lat: parseFloat(lat), lng: parseFloat(lng) };
-        });
-
-        const route =  new google.maps.Polyline({
+          if (Number(floor) !== currentFloorNum) {
+            return null;
+          }
+          return {floor:floor, lat: parseFloat(lat), lng: parseFloat(lng) };
+        }).filter(point => point !== null);
+        console.log(pathCoordinates);
+        routePolyline = new google.maps.Polyline({
           path: pathCoordinates,
           geodesic: true,
-          strokeColor: "#FF0000",
+          strokeColor: "#11bd3c",
           strokeOpacity: 1.0,
           strokeWeight: 3,
-          map: map
+          map: map,
+          icons: [{
+            icon: {
+              path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,  // Arrow symbol
+              scale: 3,  // Size of the arrow
+              strokeColor: "#11bd3c",  // Color of the arrow
+            },
+            offset: '0%',  // Start from the beginning of the line
+            repeat: '130px'  // Repeat every 100 pixels
+          }]
         });
       }
 

@@ -9,6 +9,7 @@
             src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFRCi9RiQ6jNMjspjXa6wVSVH7rbBnIGc&libraries=geometry,marker&callback=initMap&v=weekly"
             defer
     ></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
     <script>
       let map;
       let mapOnCLickListener;
@@ -177,6 +178,18 @@
         addFloorBtn.style.border = "1px solid black"
         addFloorBtn.style.borderRadius = "6px";
 
+        const downloadQRcodeBtn = document.createElement("button");
+        downloadQRcodeBtn.id = "downloadQRcodeBtn";
+        downloadQRcodeBtn.textContent = "Download QR-code";
+        downloadQRcodeBtn.classList.add('text-3xl','w-fit', 'p-2', 'bg-yellow-500', 'border', 'rounded-md', 'text-white', 'm-2');
+        downloadQRcodeBtn.style.display = "none";
+        downloadQRcodeBtn.addEventListener("click", (e) => {
+          saveQRCode();
+          downloadQRcodeBtn.style.display = "none";
+          document.getElementById('qrcode').style.display = "none";
+        });
+        map.controls[google.maps.ControlPosition.BOTTOM_CENTER].push(downloadQRcodeBtn);
+
         map.controls[google.maps.ControlPosition.LEFT_TOP].push(addFloorBtn);
         map.controls[google.maps.ControlPosition.TOP_RIGHT].push(topRightHContainer);
         map.controls[google.maps.ControlPosition.TOP_CENTER].push(savePathBtn);
@@ -187,7 +200,11 @@
         map.controls[google.maps.ControlPosition.TOP_RIGHT].push(dropdown);
         createFloorSelectors();
 
-
+        mapOnCLickListener = map.addListener("click", (event) => {
+          const qrcode = document.getElementById("qrcode");
+          qrcode.style.display = "none";
+          document.getElementById("downloadQRcodeBtn").style.display = "none";
+        });
         addFloorBtn.addEventListener("click", (e) => {
           togglePopup();
         });
@@ -216,6 +233,11 @@
               google.maps.event.removeListener(mapOnCLickListener);
               mapOnCLickListener = null;
             }
+            mapOnCLickListener = map.addListener("click", (event) => {
+              const qrcode = document.getElementById("qrcode");
+              qrcode.style.display = "none";
+              document.getElementById("downloadQRcodeBtn").style.display = "none";
+            });
             for (const marker of poiMarkers) {
               marker.map = null;
             }
@@ -237,6 +259,10 @@
           } else if (selectedValueDropdown === FloorPlanOptions.PATHS) {
             for (const marker of poiMarkers) {
               marker.map = null;
+            }
+            if(mapOnCLickListener) {
+              google.maps.event.removeListener(mapOnCLickListener);
+              mapOnCLickListener = null;
             }
             sliderContainer.style.display = "none";
             saveFloorBtn.style.display = "none";
@@ -364,6 +390,33 @@
           }
         });
       }
+      function generateQRCode(floornum, lat, lng) {
+
+        if ( !lat || !lng) {
+          alert("Please fill in all fields.");
+          return;
+        }
+
+        // Combine the fields into a single string
+        const data = `floornum=${encodeURIComponent(floornum)}&lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`;
+
+        // Generate the QR code
+        const qrCodeContainer = document.getElementById('qrcode');
+        qrCodeContainer.style.display = "block";
+
+       document.getElementById("downloadQRcodeBtn").style.display = "block";
+        qrCodeContainer.innerHTML = ''; // Clear any previous QR code
+
+        // Error handling for QR code generation
+        QRCode.toCanvas(qrCodeContainer, data, { errorCorrectionLevel: 'H' }, function (error) {
+          if (error) {
+            console.error(error);
+            alert("Error generating QR code: " + error.message);
+          } else {
+            console.log('QR code generated!');
+          }
+        });
+      }
       function createFloorSelectors() {
         if(!allFloorplans) {
           return;
@@ -413,6 +466,16 @@
           }
         });
 
+      }
+      function saveQRCode() {
+        const qrCodeCanvas = document.getElementById('qrcode');
+        const image = qrCodeCanvas.toDataURL("image/png"); // Get image data URL
+
+        // Create a temporary link to trigger download
+        const downloadLink = document.createElement('a');
+        downloadLink.href = image;
+        downloadLink.download = 'qrcode.png'; // Set file name for download
+        downloadLink.click(); // Trigger download
       }
       async function displayMarkers() {
         if (!advancedMarkers) {
@@ -742,11 +805,15 @@
           console.log(JSON.stringify(polyline.getPath().getAt(e.vertex)));
           if (selectedValueDropdown === FloorPlanOptions.POINTS_OF_INTEREST) {
             togglePopupPOI();
-          } else {
+          } else if (selectedValueDropdown === FloorPlanOptions.PATHS) {
             completeCurrentPolyline();
             startNewPolyline();
             addLatLng(e);
             highlightVertex(e);
+          } else {
+            console.log(polyline.getPath().getAt(e.vertex).lat());
+            const point = polyline.getPath().getAt(e.vertex);
+            generateQRCode(currentFloorNum, point.lat(), point.lng());
           }
         });
       }
@@ -1341,6 +1408,19 @@
         border-radius: 10px;
         width: 400px; /* Set width to 400px */
       }
+      #qrcode {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1000;
+        display: none;
+        padding: 10px;
+        border-radius: 10px;
+        border: 1px solid black;
+        background-color: slateblue;
+        width: 400px;
+      }
       .slider-container {
         display: flex;
         flex-direction: column;
@@ -1450,6 +1530,7 @@
     </style>
   </head>
   <body>
+  <canvas id="qrcode"></canvas>
   <div id="popup" class="popup">
     <div class="popup-content">
       <form id="floorPlanForm" enctype="multipart/form-data">

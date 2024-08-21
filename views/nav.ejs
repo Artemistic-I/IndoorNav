@@ -300,7 +300,7 @@
             const scanQRcodeBtn = document.createElement("button");
             scanQRcodeBtn.type = "button";
             scanQRcodeBtn.textContent = "Scan QR-code";
-            scanQRcodeBtn.classList.add('w-fit', 'rounded-xl', 'p-5', 'm-5', 'text-5xl', 'border-blue-500', 'border', 'bg-yellow-600', 'text-white');
+            scanQRcodeBtn.classList.add('w-fit', 'h-fit', 'rounded-xl', 'p-3.5', 'm-5', 'text-6xl', 'border-blue-500', 'border', 'bg-yellow-600', 'text-white');
             map.controls[google.maps.ControlPosition.BOTTOM_CENTER].push(scanQRcodeBtn);
 
             const verticalDiv = document.createElement("div");
@@ -531,7 +531,7 @@
                                     infoWindow.close();
                                     const [floorAndLat, lng] = startNode.split(',');  // Split into "floor:lat" and "lng"
                                     const [floor, lat] = startNode.split(':');
-                                    map.setCenter(`{lat:${Number(lat)},lng:${Number(lng)}}`);
+                                    map.setCenter({lat:Number(lat),lng:Number(lng)});
                                     currentFloorNum = Number(floor);
                                     displayFloorPlan(Number(floor));
                                     displayMarkers();

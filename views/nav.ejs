@@ -981,6 +981,7 @@
             }
             return graph;
         }
+        //Modified version of algorithm from https://www.geeksforgeeks.org/dijkstras-shortest-path-algorithm-using-priority_queue-stl/
         function dijkstra(graph, startNode) {
             const distances = {};
             const previous = {};
@@ -1013,8 +1014,6 @@
 
             return { distances, previous };
         }
-
-        // Priority Queue implementation
         class PriorityQueue {
             constructor(comparator) {
                 this._data = [];

@@ -67,7 +67,7 @@
         }
 
         /* Styles for the buttons */
-        input[type="button"], input[type="submit"] {
+        input[type="submit"] {
             padding-left: 5px;
             padding-right: 5px;
             height: 40px;
@@ -258,6 +258,13 @@
         let graph;
         let floorDropdownOptions = [];
         let startNode = "0:53.381411419134636,-1.481581661349216";
+        let endNode;
+        let startMarker;
+        let endMarker;
+        let totalDistance;
+        let avoidIsOn = false;
+        let infoWindows = [];
+        let infoMarkers = [];
 
         async function initMap() {
             await loadFloors();
@@ -291,11 +298,48 @@
             inputDestination.type = "text";
             inputDestination.placeholder = "Enter a destination";
             inputDestination.id = "inputDestination";
-            inputDestination.classList.add('w-11/12', 'text-center', 'p-5', 'rounded-xl', 'm-2.5', 'text-5xl', 'border-blue-500', 'border');
+            inputDestination.classList.add('w-10/12', 'text-center', 'p-5', 'rounded-xl', 'mt-2.5', 'text-5xl', 'border-blue-500', 'border');
+
+            const avoidStairsBtn = document.createElement("button");
+            avoidStairsBtn.type = "button";
+            avoidStairsBtn.textContent = "Avoid stairs: OFF";
+            avoidStairsBtn.classList.add('w-fit', 'rounded-xl', 'p-2', 'mt-3', 'mr-3', 'text-3xl', 'border-blue-500', 'border', 'bg-gray-400', 'text-white', 'bg-opacity-50');
+            avoidStairsBtn.addEventListener('click', () => {
+                if (!avoidIsOn) {
+                    avoidIsOn = true;
+                    console.log("stairs avoided :)");
+                    avoidStairsBtn.classList.remove('bg-opacity-50', 'bg-gray-400');
+                    avoidStairsBtn.classList.add('bg-green-400');
+                    avoidStairsBtn.textContent = "Avoid stairs: ON";
+                    graph = buildGraph(polylinesData);
+                    if (routePolyline) {
+                        removePolyline(routePolyline);
+                    }
+                    if(shortestRoute) {
+                        shortestRoute = shortestPath(graph, startNode, endNode);
+                        drawShortestPath(shortestRoute);
+                    }
+                } else {
+                    avoidIsOn = false;
+                    console.log("stairs and lifts are fine with me :)");
+                    avoidStairsBtn.classList.remove('bg-green-400');
+                    avoidStairsBtn.classList.add('bg-opacity-50', 'bg-gray-400');
+                    avoidStairsBtn.textContent = "Avoid stairs: OFF";
+                    graph = buildGraph(polylinesData);
+                    if (routePolyline) {
+                        removePolyline(routePolyline);
+                    }
+                    if(shortestRoute) {
+                        shortestRoute = shortestPath(graph, startNode, endNode);
+                        drawShortestPath(shortestRoute);
+                    }
+                }
+            });
+
 
             const resultsContainer = document.createElement("div");
             resultsContainer.id = "resultsContainer";
-            resultsContainer.classList.add('max-h-96', 'overflow-y-auto', 'text-3xl', 'w-11/12', 'text-center', 'bg-white', 'shadow-lg', 'rounded-xl', 'mt-2');
+            resultsContainer.classList.add('max-h-96', 'overflow-y-auto', 'text-3xl', 'w-10/12', 'text-center', 'bg-white', 'shadow-lg', 'rounded-xl', 'mt-2');
 
             const scanQRcodeBtn = document.createElement("button");
             scanQRcodeBtn.type = "button";
@@ -304,10 +348,11 @@
             map.controls[google.maps.ControlPosition.BOTTOM_CENTER].push(scanQRcodeBtn);
 
             const verticalDiv = document.createElement("div");
-            verticalDiv.classList.add('flex', 'flex-col', 'w-full', 'items-center');
+            verticalDiv.classList.add('flex', 'flex-col', 'w-10/12', 'items-center');
             verticalDiv.appendChild(inputDestination);
             verticalDiv.appendChild(resultsContainer);
             map.controls[google.maps.ControlPosition.TOP_CENTER].push(verticalDiv);
+            map.controls[google.maps.ControlPosition.TOP_CENTER].push(avoidStairsBtn);
 
             inputDestination.addEventListener("input", async (e) => {
                 resultsContainer.style.display = "block";
@@ -339,6 +384,9 @@
                     resultItem.classList.add('text-4xl', 'text-gray-500','rounded-md', 'border', 'p-6', 'cursor-pointer', 'hover:bg-purple-500', 'hover:text-white');
                     resultItem.textContent = `${result.name} (Floor: ${result.floornum}, Type: ${result.category})`;
                     resultItem.addEventListener('click', () => {
+                        if (routePolyline) {
+                            removePolyline(routePolyline);
+                        }
                         map.setCenter(result.position);
                         currentFloorNum = result.floornum;
                         displayFloorPlan(result.floornum);
@@ -348,6 +396,9 @@
                             if (option.value == result.floornum) {
                                 option.selected = true;
                             }
+                        }
+                        if(shortestRoute) {
+                            drawShortestPath(shortestRoute);
                         }
                         resultsContainer.style.display = "none";
                     });
@@ -380,6 +431,27 @@
                 console.log(`Code matched = ${decodedText}`, decodedResult);
                 let params = new URLSearchParams(decodedText);
                 startNode = `${params.get('floornum')}:${params.get('lat')},${params.get('lng')}`;
+                if (routePolyline) {
+                    removePolyline(routePolyline);
+                }
+                const [floorAndLat, lng] = startNode.split(',');  // Split into "floor:lat" and "lng"
+                const [floor, lat] = floorAndLat.split(':');
+
+                map.setCenter({lat: Number(lat), lng: Number(lng)});
+                currentFloorNum = Number(floor);
+                displayFloorPlan(Number(floor));
+                displayMarkers();
+                map.setZoom(21);
+                for (let option of floorDropdownOptions) {
+                    if (option.value == Number(floor)) {
+                        option.selected = true;
+                    }
+                }
+                if(shortestRoute) {
+                    shortestRoute = shortestPath(graph, startNode, endNode);
+                    drawShortestPath(shortestRoute);
+                }
+                displayStartEndMarkers();
                 console.log(startNode);
                 if (html5QrcodeScanner) {
                     html5QrcodeScanner.clear().then(() => {
@@ -398,6 +470,62 @@
             }
             graph = buildGraph(polylinesData);
             await displayMarkers();
+        }
+        async function displayStartEndMarkers() {
+            const [floorAndLat, lng] = startNode.split(',');  // Split into "floor:lat" and "lng"
+            const [floor, lat] = floorAndLat.split(':');
+            const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+            if (startMarker) {
+                removeMarker(startMarker);
+                startMarker = null;
+            }
+            if (currentFloorNum === Number(floor)) {
+                const emojiElement = document.createElement("div");
+                emojiElement.style.fontSize = "50px";
+                emojiElement.style.lineHeight = "1";
+                emojiElement.innerHTML = "📍";
+                startMarker = new AdvancedMarkerElement({
+                    map,
+                    position: {lat: Number(lat), lng: Number(lng)},
+                    title: `You are here`,
+                    gmpClickable: true,
+                    content: emojiElement
+                });
+                let message = `You are here<br>`;
+                if (totalDistance) {
+                    message += `Distance to go: ${totalDistance.toFixed(2)} m<br>`;
+                    let travelTime = (totalDistance/(5*0.278)/60).toFixed(2);
+                    message += `Time to go: ${travelTime} min`;
+                }
+                const infoWindow = new google.maps.InfoWindow({
+                    content: `<div class="text-5xl text-indigo-600 w-fit text-center">${message}</div>`,
+                });
+                infoWindow.open(map, startMarker);
+                infoWindow.addListener('closeclick', () => {
+                    // Remove the marker from the map when the infoWindow is closed
+                    startMarker.setMap(null);
+                    startMarker = null;
+                });
+            }
+            if (endMarker) {
+                removeMarker(endMarker);
+                endMarker = null;
+            }
+            const [floorAndLatEnd, lngEnd] = endNode.split(',');  // Split into "floor:lat" and "lng"
+            const [floorEnd, latEnd] = floorAndLatEnd.split(':');
+            if (currentFloorNum === Number(floorEnd)) {
+                const emojiElement = document.createElement("div");
+                emojiElement.style.fontSize = "50px";
+                emojiElement.style.lineHeight = "1";
+                emojiElement.innerHTML = "🏁";
+                endMarker = new AdvancedMarkerElement({
+                    map,
+                    position: {lat: Number(latEnd), lng: Number(lngEnd)},
+                    title: `You are here`,
+                    gmpClickable: true,
+                    content: emojiElement
+                });
+            }
         }
 
         async function loadMarkers() {
@@ -424,8 +552,8 @@
                 if(marker.floornum === currentFloorNum) {
                     let pinColour;
                     let customMarkerContent = document.createElement('div');
-                    customMarkerContent.style.width = '40px';
-                    customMarkerContent.style.height = '40px';
+                    customMarkerContent.style.width = '60px';
+                    customMarkerContent.style.height = '60px';
                     // Set your desired background color
                     customMarkerContent.style.borderRadius = '50%';  // Make it a circle
                     customMarkerContent.style.display = 'flex';
@@ -433,7 +561,7 @@
                     customMarkerContent.style.alignItems = 'center';
                     customMarkerContent.style.border = '2px solid black';
                     const emojiElement = document.createElement("div");
-                    emojiElement.style.fontSize = "30px";
+                    emojiElement.style.fontSize = "50px";
                     emojiElement.style.lineHeight = "1";
                     customMarkerContent.appendChild(emojiElement);
                     let isEmoji = true;
@@ -490,6 +618,7 @@
                     customMarkerContent.style.backgroundColor = pinColour;
                     const pinBackground = new google.maps.marker.PinElement({
                         background: pinColour,
+                        scale: 1.5,
                         glyphColor: "white",
                         borderColor: "black"
                     });
@@ -522,7 +651,7 @@
                             document.querySelectorAll('.goHereBtn').forEach(btn => {
                                 btn.classList.add('text-4xl','w-full', 'p-2', 'bg-yellow-500', 'border', 'rounded-md', 'text-white', 'm-2');
                                 btn.addEventListener('click', () => {
-                                    const endNode = `${marker.floornum}:${marker.position.lat},${marker.position.lng}`; // ending point
+                                    endNode = `${marker.floornum}:${marker.position.lat},${marker.position.lng}`; // ending point
                                     shortestRoute = shortestPath(graph, startNode, endNode);
                                     console.log("Shortest Path:", shortestRoute);
                                     if (routePolyline) {
@@ -530,8 +659,8 @@
                                     }
                                     infoWindow.close();
                                     const [floorAndLat, lng] = startNode.split(',');  // Split into "floor:lat" and "lng"
-                                    const [floor, lat] = startNode.split(':');
-                                    map.setCenter({lat:Number(lat),lng:Number(lng)});
+                                    const [floor, lat] = floorAndLat.split(':');
+                                    map.setCenter(new google.maps.LatLng(Number(lat), Number(lng)));
                                     currentFloorNum = Number(floor);
                                     displayFloorPlan(Number(floor));
                                     displayMarkers();
@@ -544,6 +673,7 @@
                                     if(shortestRoute) {
                                         drawShortestPath(shortestRoute);
                                     }
+                                    displayStartEndMarkers();
                                 });
                             });
                         });
@@ -582,6 +712,14 @@
                 if (routePolyline) {
                     removePolyline(routePolyline);
                 }
+                for (const infoWindow of infoWindows) {
+                    infoWindow.close();
+                }
+                infoWindows = [];
+                for (const infoMarker of infoMarkers) {
+                    infoMarker.setMap(null);
+                }
+                infoMarkers = [];
                 displayFloorPlan(selectedFloorOrder);
                 currentFloorNum = selectedFloorOrder;
                 displayPolylines();
@@ -589,6 +727,7 @@
                 if(shortestRoute) {
                     drawShortestPath(shortestRoute);
                 }
+                displayStartEndMarkers();
             });
 
         }
@@ -951,9 +1090,15 @@
             });
             //link floors
             let stairsAndLifts = new Map();
-            let distanceBetweenFloors = 3; //distance between the floors in meters
+            let distanceBetweenFloors = 10; //distance between the floors in meters
             for (const marker of advancedMarkers) {
-                if (marker.category === "lift" || marker.category === "stairs") {
+                let categoryCondition;
+                if (avoidIsOn) {
+                    categoryCondition = marker.category === "lift";
+                } else {
+                    categoryCondition = marker.category === "lift" || marker.category === "stairs";
+                }
+                if (categoryCondition) {
                     //console.log(`floor: ${marker.floornum} name: ${marker.name}`);
                     if (!stairsAndLifts.has(marker.name)) {
                         stairsAndLifts.set(marker.name, []);
@@ -1038,12 +1183,12 @@
             console.log(dijkstra(graph, startNode));
             let path = [];
             let currentNode = endNode;
+            totalDistance = distances[currentNode];
 
             while (currentNode) {
                 path.push(currentNode);
                 currentNode = previous[currentNode];
             }
-
             return path.reverse();
         }
         function drawShortestPath(path) {
@@ -1098,7 +1243,7 @@
                         let marker = new google.maps.Marker({
                             position: {lat: lastLat, lng: lastLng},
                             map: map,
-                            title: "You've reached the end!"
+                            title: "go to floor x"
                         });
                         infoWindow.open(map, marker);
                         infoWindow.addListener('closeclick', () => {
@@ -1106,6 +1251,8 @@
                             marker.setMap(null);
                             marker = null;
                         });
+                        infoWindows.push(infoWindow);
+                        infoMarkers.push(marker);
                         break;
                     }
                 }
@@ -1149,7 +1296,7 @@
                         scale: 3,  // Size of the arrow
                         strokeColor: "#11bd3c",  // Color of the arrow
                     },
-                    offset: '0%',  // Start from the beginning of the line
+                    offset: '5%',  // Start from the beginning of the line
                     repeat: '130px'  // Repeat every 100 pixels
                 }]
             });

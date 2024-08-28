@@ -22,7 +22,6 @@
       let overlays = new Map();
       let markerPairs = new Map(); //custom overlay resizing markers
       let advancedMarkers; //all poi markers
-      let floorSelectors = new Map();
       let poiMarkers = [];//current floor poi markers
       let favColor = "#0cfabf";
       let currentPolyline;
@@ -425,14 +424,22 @@
         const floorDropdown = document.createElement('select');
         floorDropdown.classList.add('w-fit', 'text-center', 'h-fit', 'text-3xl', 'rounded-xl','p-2.5' , 'm-5', 'border-blue-500', 'border', 'bg-purple-600', 'text-white');
         allFloorplans.forEach(function(floor) {
-          let option = document.createElement('option');
-          floorDropdownOptions.push(option);
-          option.textContent = floor.name;
-          option.value = floor.order;
-          if (floor.order == 0) {
-            option.selected = true;
+          let alreadyExists = false;
+          for (let option of floorDropdownOptions) {
+            if (option.value == floor.order) {
+              alreadyExists = true;
+            }
           }
-          floorDropdown.appendChild(option);
+          if (!alreadyExists) {
+            let option = document.createElement('option');
+            floorDropdownOptions.push(option);
+            option.textContent = floor.name;
+            option.value = floor.order;
+            if (floor.order == 0) {
+              option.selected = true;
+            }
+            floorDropdown.appendChild(option);
+          }
         });
         map.controls[google.maps.ControlPosition.RIGHT_BOTTOM].push(floorDropdown);
         floorDropdown.addEventListener('change', function() {
@@ -458,52 +465,6 @@
             overlays.get(selectedFloorOrder).markers.southWest.setMap(map);
           }
         });
-
-        // allFloorplans.forEach(function(floor) {
-        //   if (!floorSelectors.get(floor.order)) {
-        //     let btn = document.createElement('button');
-        //     btn.textContent = floor.name;
-        //     btn.label = floor.name;
-        //     btn.style.display = "inline-block";
-        //     btn.style.whiteSpace = "nowrap";
-        //     btn.style.color = "white";
-        //     btn.style.fontSize = "18px";
-        //     btn.style.backgroundColor = "#7C3AED";
-        //     btn.style.marginRight = "10px";
-        //     btn.style.marginTop = "10px";
-        //     btn.style.padding = "10px";
-        //     btn.style.border = "1px solid #007bff"
-        //     btn.style.borderRadius = "6px";
-        //     floorSelectors.set(floor.order, btn);
-        //     map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(btn);
-        //     btn.addEventListener('click', function() {
-        //       // if (routePolyline){
-        //       //   removePolyline(routePolyline);
-        //       // }
-        //       displayFloorPlan(floor.order);
-        //       currentFloorNum = Number(floor.order);
-        //       displayPolylines();
-        //       // drawShortestPath(shortestRoute);
-        //       if (selectedValueDropdown !== FloorPlanOptions.FLOORS) {
-        //         if(selectedValueDropdown === FloorPlanOptions.POINTS_OF_INTEREST) {
-        //           displayMarkers();
-        //         } else {
-        //           for (const marker of poiMarkers) {
-        //             marker.map = null;
-        //           }
-        //         }
-        //         for (const overlay of overlays.values()) {
-        //           overlay.markers.northEast.setMap(null);
-        //           overlay.markers.southWest.setMap(null);
-        //         }
-        //       } else {
-        //         overlays.get(floor.order).markers.northEast.setMap(map);
-        //         overlays.get(floor.order).markers.southWest.setMap(map);
-        //       }
-        //     });
-        //   }
-        // });
-
       }
       function saveQRCode() {
         const qrCodeCanvas = document.getElementById('qrcode');

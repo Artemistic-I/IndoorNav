@@ -38,6 +38,7 @@
         PATHS: 'Paths'
       };
       let floorDropdownOptions = [];
+      let floorDropdown;
 
       async function initMap() {
         await loadFloors();
@@ -56,7 +57,7 @@
         } else {
           map = new google.maps.Map(document.getElementById("map"), {
             zoom: 19,
-            center: { lat: 53.38169097419639, lng: -1.4820265913660122 },
+            center: { lat: 53.379947, lng: -1.469431 },
             disableDefaultUI: true,
             heading: 0.0,
             tilt: 0.0,
@@ -177,6 +178,9 @@
         addFloorBtn.style.padding = "10px";
         addFloorBtn.style.border = "1px solid black"
         addFloorBtn.style.borderRadius = "6px";
+
+        floorDropdown = document.createElement('select');
+        floorDropdown.classList.add('w-fit', 'text-center', 'h-fit', 'text-3xl', 'rounded-xl','p-2.5' , 'm-5', 'border-blue-500', 'border', 'bg-purple-600', 'text-white');
 
         const downloadQRcodeBtn = document.createElement("button");
         downloadQRcodeBtn.id = "downloadQRcodeBtn";
@@ -421,8 +425,6 @@
         if(!allFloorplans) {
           return;
         }
-        const floorDropdown = document.createElement('select');
-        floorDropdown.classList.add('w-fit', 'text-center', 'h-fit', 'text-3xl', 'rounded-xl','p-2.5' , 'm-5', 'border-blue-500', 'border', 'bg-purple-600', 'text-white');
         allFloorplans.forEach(function(floor) {
           let alreadyExists = false;
           for (let option of floorDropdownOptions) {
@@ -746,8 +748,12 @@
         if (!alreadyExists) {
           // Calculate the initial corners based on the center coordinate
           let corners;
-          console.log(allFloorplans.get(floorNum).corners);
-          corners = allFloorplans.get(floorNum).corners;
+          //console.log(allFloorplans.get(Number(floorNum)).corners);
+          if (!allFloorplans.get(Number(floorNum)).corners) {
+            corners = allFloorplans.get(0).corners;
+          } else {
+            corners = allFloorplans.get(Number(floorNum)).corners;
+          }
           const cornerMarkers = {
             northEast: new google.maps.Marker({
               position: corners.northEast,
@@ -1115,6 +1121,7 @@
           await savePolylines();
         }
         await loadPolylines();
+        displayPolylines();
       }
       function togglePopup() {
         const popup = document.getElementById("popup");
